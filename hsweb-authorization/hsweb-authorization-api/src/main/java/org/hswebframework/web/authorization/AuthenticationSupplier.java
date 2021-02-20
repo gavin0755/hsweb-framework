@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 http://www.hswebframework.org
+ * Copyright 2020 http://www.hswebframework.org
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,18 @@
 
 package org.hswebframework.web.authorization;
 
+import reactor.core.publisher.Mono;
+
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
  * @author zhouhao
  * @see Supplier
  * @see Authentication
- * @see AuthenticationHolder
+ * @see ReactiveAuthenticationHolder
  */
-public interface AuthenticationSupplier extends Supplier<Authentication> {
-    Authentication get(String userId);
+public interface AuthenticationSupplier extends Supplier<Optional<Authentication>> {
+
+    Optional<Authentication> get(String userId);
 }

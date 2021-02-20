@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2019 http://www.hswebframework.org
+ *  * Copyright 2020 http://www.hswebframework.org
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ public @interface AccessLogger {
      * @return 对类或方法的简单说明
      * @see AccessLoggerInfo#getAction()
      */
-    String value();
+    String value() default "";
 
     /**
      * @return 对类或方法的详细描述

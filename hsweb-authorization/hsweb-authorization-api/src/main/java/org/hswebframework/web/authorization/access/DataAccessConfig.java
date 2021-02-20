@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019 http://www.hswebframework.org
+ *  Copyright 2020 http://www.hswebframework.org
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,9 +28,7 @@ import java.io.Serializable;
  * 具体的控制逻辑由控制器{@link DataAccessController}实现
  *
  * @author zhouhao
- * @see CustomDataAccessConfig
  * @see OwnCreatedDataAccessConfig
- * @see ScriptDataAccessConfig
  */
 public interface DataAccessConfig extends Serializable {
 
@@ -52,7 +50,7 @@ public interface DataAccessConfig extends Serializable {
      * @return 控制方式
      * @see DefaultType
      */
-    String getType();
+    DataAccessType getType();
 
     /**
      * 内置的控制方式
@@ -64,32 +62,21 @@ public interface DataAccessConfig extends Serializable {
          * @see OwnCreatedDataAccessConfig#getType()
          */
         String OWN_CREATED = "OWN_CREATED";
-        /**
-         * 字段值范围
-         *
-         * @see FieldScopeDataAccessConfig#getType()
-         */
-        String FIELD_SCOPE = "FIELD_SCOPE";
 
         /**
-         * 字段过滤,黑名单
+         * 禁止操作字段
          *
          * @see FieldFilterDataAccessConfig#getType()
          */
         String DENY_FIELDS = "DENY_FIELDS";
 
         /**
-         * 自定义脚本方式
+         * 禁止操作字段
          *
-         * @see ScriptDataAccessConfig#getType()
+         * @see org.hswebframework.web.authorization.simple.DimensionDataAccessConfig#getType()
          */
-        String SCRIPT = "SCRIPT";
+        String DIMENSION_SCOPE = "DIMENSION_SCOPE";
 
-        /**
-         * 自定义控制器
-         *
-         * @see CustomDataAccessConfig#getType()
-         */
-        String CUSTOM = "CUSTOM";
+
     }
 }

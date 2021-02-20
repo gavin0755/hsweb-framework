@@ -24,13 +24,13 @@ import java.util.function.Consumer;
 public class Proxy<I> {
     private static final AtomicLong counter = new AtomicLong(1);
 
-    private CtClass  ctClass;
+    private final CtClass ctClass;
     @Getter
-    private Class<I> superClass;
+    private final Class<I> superClass;
     @Getter
-    private String   className;
+    private final String className;
     @Getter
-    private String   classFullName;
+    private final String classFullName;
 
     private Class<I> targetClass;
 
@@ -45,10 +45,11 @@ public class Proxy<I> {
             throw new NullPointerException("superClass can not be null");
         }
         this.superClass = superClass;
-        ClassPool classPool = new ClassPool(true);
+        ClassPool classPool = ClassPool.getDefault();
 
-        ClassPath classPath = new ClassClassPath(this.getClass());
-        classPool.insertClassPath(classPath);
+        classPool.insertClassPath(new ClassClassPath(this.getClass()));
+        classPool.insertClassPath(new LoaderClassPath(ClassUtils.getDefaultClassLoader()));
+
         if (classPathString != null) {
             for (String path : classPathString) {
                 classPool.insertClassPath(path);

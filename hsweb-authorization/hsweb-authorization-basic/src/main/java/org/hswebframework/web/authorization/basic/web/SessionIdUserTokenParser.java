@@ -1,12 +1,12 @@
 package org.hswebframework.web.authorization.basic.web;
 
+import org.hswebframework.web.authorization.token.ParsedToken;
 import org.hswebframework.web.authorization.token.UserToken;
 import org.hswebframework.web.authorization.token.UserTokenManager;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
-import java.util.function.Predicate;
 
 import static org.hswebframework.web.authorization.basic.web.UserTokenGenerator.TOKEN_TYPE_SESSION_ID;
 
@@ -30,7 +30,7 @@ public class SessionIdUserTokenParser implements UserTokenParser {
 
         if (session != null) {
             String sessionId = session.getId();
-            UserToken token = userTokenManager.getByToken(sessionId);
+            UserToken token = userTokenManager.getByToken(sessionId).block();
             long interval = session.getMaxInactiveInterval();
             //当前已登录token已失效但是session未失效
             if (token != null && token.isExpired()) {

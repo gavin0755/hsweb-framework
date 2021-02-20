@@ -2,6 +2,7 @@ package org.hswebframework.web.authorization;
 
 import org.hswebframework.web.authorization.exception.AccessDenyException;
 
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Predicate;
 
@@ -16,8 +17,8 @@ public interface AuthenticationPredicate extends Predicate<Authentication> {
         return AuthenticationUtils.createPredicate(permissionString);
     }
 
-    static AuthenticationPredicate role(String role) {
-        return autz -> autz.hasRole(role);
+    static AuthenticationPredicate dimension(String dimension, String... id) {
+        return autz -> autz.hasDimension(dimension, Arrays.asList(id));
     }
 
     static AuthenticationPredicate permission(String permissionId, String... actions) {
@@ -44,17 +45,6 @@ public interface AuthenticationPredicate extends Predicate<Authentication> {
         return (t) -> test(t) || other.test(t);
     }
 
-    default boolean test() {
-        return Authentication.current()
-                .map(this::test)
-                .orElse(false);
-    }
-
-    default void assertHas() {
-        if (!test()) {
-            throw new AccessDenyException();
-        }
-    }
 
     default void assertHas(Authentication authentication) {
         if (!test(authentication)) {

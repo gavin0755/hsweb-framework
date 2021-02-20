@@ -1,7 +1,7 @@
 package org.hswebframework.web.authorization.basic.aop;
 
+import org.hswebframework.web.aop.MethodInterceptorContext;
 import org.hswebframework.web.authorization.define.AuthorizeDefinition;
-import org.hswebframework.web.boost.aop.context.MethodInterceptorContext;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -21,9 +21,9 @@ public interface AopMethodAuthorizeDefinitionParser {
      * @param method method
      * @return 权限控制定义, 如果不进行权限控制则返回{@code null}
      */
-    AuthorizeDefinition parse(Class target, Method method, MethodInterceptorContext context);
+    AuthorizeDefinition parse(Class<?> target, Method method, MethodInterceptorContext context);
 
-    default AuthorizeDefinition parse(Class target, Method method) {
+    default AuthorizeDefinition parse(Class<?> target, Method method) {
         return parse(target, method, null);
     }
 

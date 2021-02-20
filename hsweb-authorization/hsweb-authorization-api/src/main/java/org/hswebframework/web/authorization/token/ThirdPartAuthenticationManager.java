@@ -1,6 +1,9 @@
 package org.hswebframework.web.authorization.token;
 
 import org.hswebframework.web.authorization.Authentication;
+import reactor.core.publisher.Mono;
+
+import java.util.Optional;
 
 /**
  * @author zhouhao
@@ -19,6 +22,6 @@ public interface ThirdPartAuthenticationManager {
      * @param userId 用户ID
      * @return 权限信息
      */
-    Authentication getByUserId(String userId);
+    Optional<Authentication> getByUserId(String userId);
 
 }

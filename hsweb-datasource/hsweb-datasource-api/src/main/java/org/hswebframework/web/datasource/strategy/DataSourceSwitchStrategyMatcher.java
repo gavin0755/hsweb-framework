@@ -1,6 +1,6 @@
 package org.hswebframework.web.datasource.strategy;
 
-import org.hswebframework.web.boost.aop.context.MethodInterceptorContext;
+import org.hswebframework.web.aop.MethodInterceptorContext;
 import org.hswebframework.web.datasource.DynamicDataSource;
 import org.hswebframework.web.datasource.exception.DataSourceNotFoundException;
 
@@ -55,6 +55,12 @@ public interface DataSourceSwitchStrategyMatcher {
          * @see org.hswebframework.web.datasource.switcher.DataSourceSwitcher#use(String)
          */
         String getDataSourceId();
+
+        /**
+         * @since 3.0.8
+         * @return 指定数据库
+         */
+        String getDatabase();
     }
 
 }

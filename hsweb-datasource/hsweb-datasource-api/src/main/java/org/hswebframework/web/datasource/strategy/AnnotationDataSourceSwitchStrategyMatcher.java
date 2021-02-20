@@ -1,8 +1,9 @@
 package org.hswebframework.web.datasource.strategy;
 
-import org.hswebframework.web.AopUtils;
 import org.hswebframework.web.datasource.annotation.UseDataSource;
 import org.hswebframework.web.datasource.annotation.UseDefaultDataSource;
+import org.hswebframework.web.utils.AnnotationUtils;
+import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -21,8 +22,8 @@ public class AnnotationDataSourceSwitchStrategyMatcher extends CachedDataSourceS
         if (ignoreMethod.contains(method.getName())) {
             return null;
         }
-        UseDataSource useDataSource = AopUtils.findAnnotation(target, method, UseDataSource.class);
-        UseDefaultDataSource useDefaultDataSource = AopUtils.findAnnotation(target, method, UseDefaultDataSource.class);
+        UseDataSource useDataSource = AnnotationUtils.findAnnotation(target, method, UseDataSource.class);
+        UseDefaultDataSource useDefaultDataSource = AnnotationUtils.findAnnotation(target, method, UseDefaultDataSource.class);
 
         boolean support = useDataSource != null || useDefaultDataSource != null;
         if (support) {
@@ -45,6 +46,11 @@ public class AnnotationDataSourceSwitchStrategyMatcher extends CachedDataSourceS
                 @Override
                 public String toString() {
                     return "Annotation Strategy(" + (useDataSource != null ? useDataSource : useDefaultDataSource) + ")";
+                }
+
+                @Override
+                public String getDatabase() {
+                    return useDataSource == null ? null : StringUtils.isEmpty(useDataSource.database()) ? null : useDataSource.database();
                 }
             };
         }

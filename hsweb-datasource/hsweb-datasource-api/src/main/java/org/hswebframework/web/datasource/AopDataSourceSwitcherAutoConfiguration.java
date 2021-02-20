@@ -1,11 +1,11 @@
 package org.hswebframework.web.datasource;
 
 import org.aopalliance.intercept.MethodInterceptor;
-import org.hswebframework.web.ExpressionUtils;
-import org.hswebframework.web.boost.aop.context.MethodInterceptorContext;
-import org.hswebframework.web.boost.aop.context.MethodInterceptorHolder;
+import org.hswebframework.web.aop.MethodInterceptorContext;
+import org.hswebframework.web.aop.MethodInterceptorHolder;
 import org.hswebframework.web.datasource.exception.DataSourceNotFoundException;
 import org.hswebframework.web.datasource.strategy.*;
+import org.hswebframework.web.utils.ExpressionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aop.support.StaticMethodMatcherPointcutAdvisor;
@@ -13,6 +13,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.ClassUtils;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -20,7 +22,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 import static org.hswebframework.web.datasource.strategy.AnnotationDataSourceSwitchStrategyMatcher.*;
 
@@ -67,8 +68,8 @@ public class AopDataSourceSwitcherAutoConfiguration {
     }
 
     public static class SwitcherMethodMatcherPointcutAdvisor extends StaticMethodMatcherPointcutAdvisor {
-        private static final Logger logger           = LoggerFactory.getLogger(SwitcherMethodMatcherPointcutAdvisor.class);
-        private static final long   serialVersionUID = 536295121851990398L;
+        private static final Logger logger = LoggerFactory.getLogger(SwitcherMethodMatcherPointcutAdvisor.class);
+        private static final long serialVersionUID = 536295121851990398L;
 
         private List<DataSourceSwitchStrategyMatcher> matchers;
 
@@ -76,7 +77,7 @@ public class AopDataSourceSwitcherAutoConfiguration {
 
         private Map<CachedDataSourceSwitchStrategyMatcher.CacheKey, DataSourceSwitchStrategyMatcher> cache
                 = new ConcurrentHashMap<>();
-        private Map<CachedTableSwitchStrategyMatcher.CacheKey, TableSwitchStrategyMatcher>           tableCache
+        private Map<CachedTableSwitchStrategyMatcher.CacheKey, TableSwitchStrategyMatcher> tableCache
                 = new ConcurrentHashMap<>();
 
         public SwitcherMethodMatcherPointcutAdvisor(List<DataSourceSwitchStrategyMatcher> matchers,
@@ -92,7 +93,9 @@ public class AopDataSourceSwitcherAutoConfiguration {
 
                 Consumer<MethodInterceptorContext> before = context -> {
                 };
-                AtomicBoolean dataSourceChanged = new AtomicBoolean(true);
+                AtomicBoolean dataSourceChanged = new AtomicBoolean(false);
+                AtomicBoolean databaseChanged = new AtomicBoolean(false);
+
                 if (matcher != null) {
                     before = before.andThen(context -> {
                         Strategy strategy = matcher.getStrategy(context);
@@ -100,23 +103,26 @@ public class AopDataSourceSwitcherAutoConfiguration {
                             dataSourceChanged.set(false);
                             logger.warn("strategy matcher found:{}, but strategy is null!", matcher);
                         } else {
-                            logger.debug("switch datasource.use strategy:{}", strategy);
+                            logger.debug("switch datasource. use strategy:{}", strategy);
                             if (strategy.isUseDefaultDataSource()) {
-                                DataSourceHolder.switcher().useDefault();
+                                DataSourceHolder.switcher().datasource().useDefault();
                             } else {
                                 try {
                                     String id = strategy.getDataSourceId();
-                                    if (id.contains("${")) {
-                                        id = ExpressionUtils.analytical(id, context.getParams(), "spel");
-                                    }
-                                    if (!DataSourceHolder.existing(id)) {
-                                        if (strategy.isFallbackDefault()) {
-                                            DataSourceHolder.switcher().useDefault();
-                                        } else {
-                                            throw new DataSourceNotFoundException(id);
+                                    if (StringUtils.hasText(id)) {
+                                        if (id.contains("${")) {
+                                            id = ExpressionUtils.analytical(id, context.getNamedArguments(), "spel");
                                         }
-                                    } else {
-                                        DataSourceHolder.switcher().use(id);
+                                        if (!DataSourceHolder.existing(id)) {
+                                            if (strategy.isFallbackDefault()) {
+                                                DataSourceHolder.switcher().datasource().useDefault();
+                                            } else {
+                                                throw new DataSourceNotFoundException("数据源[" + id + "]不存在");
+                                            }
+                                        } else {
+                                            DataSourceHolder.switcher().datasource().use(id);
+                                        }
+                                        dataSourceChanged.set(true);
                                     }
                                 } catch (RuntimeException e) {
                                     dataSourceChanged.set(false);
@@ -126,6 +132,10 @@ public class AopDataSourceSwitcherAutoConfiguration {
                                     throw new RuntimeException(e.getMessage(), e);
                                 }
                             }
+                            if (StringUtils.hasText(strategy.getDatabase())) {
+                                databaseChanged.set(true);
+                                DataSourceHolder.switcher().datasource().use(strategy.getDatabase());
+                            }
                         }
                     });
                 }
@@ -134,22 +144,30 @@ public class AopDataSourceSwitcherAutoConfiguration {
                         TableSwitchStrategyMatcher.Strategy strategy = tableMatcher.getStrategy(context);
                         if (null != strategy) {
                             logger.debug("switch table. use strategy:{}", strategy);
-                            strategy.getMapping().forEach(DataSourceHolder.tableSwitcher()::use);
+                           // strategy.getMapping().forEach(DataSourceHolder.switcher()::use);
                         } else {
                             logger.warn("table strategy matcher found:{}, but strategy is null!", matcher);
                         }
                     });
                 }
 
+                Class<?> returnType= methodInvocation.getMethod().getReturnType();
+
+                if(returnType.isAssignableFrom(Flux.class)){
+                    // TODO: 2019-10-08
+                }
                 MethodInterceptorHolder holder = MethodInterceptorHolder.create(methodInvocation);
                 before.accept(holder.createParamContext());
                 try {
                     return methodInvocation.proceed();
                 } finally {
                     if (dataSourceChanged.get()) {
-                        DataSourceHolder.switcher().useLast();
+                        DataSourceHolder.switcher().datasource().useLast();
                     }
-                    DataSourceHolder.tableSwitcher().reset();
+                    if (databaseChanged.get()) {
+                        DataSourceHolder.switcher().datasource().useLast();
+                    }
+                  //  DataSourceHolder.tableSwitcher().reset();
                 }
             });
         }

@@ -1,24 +1,20 @@
 package org.hswebframework.web.authorization.basic.handler.access;
 
 import org.apache.commons.beanutils.BeanUtilsBean;
+import org.hswebframework.ezorm.core.param.QueryParam;
 import org.hswebframework.web.authorization.Permission;
 import org.hswebframework.web.authorization.access.DataAccessConfig;
 import org.hswebframework.web.authorization.access.DataAccessHandler;
 import org.hswebframework.web.authorization.access.FieldFilterDataAccessConfig;
 import org.hswebframework.web.authorization.define.AuthorizingContext;
 import org.hswebframework.web.authorization.define.Phased;
-import org.hswebframework.web.commons.entity.Entity;
-import org.hswebframework.web.commons.entity.param.QueryParamEntity;
-import org.hswebframework.web.commons.model.Model;
-import org.hswebframework.web.controller.message.ResponseMessage;
+import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.ResponseEntity;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -43,6 +39,7 @@ public class FieldFilterDataAccessHandler implements DataAccessHandler {
             case Permission.ACTION_GET:
                 return doQueryAccess(filterDataAccessConfig, context);
             case Permission.ACTION_ADD:
+            case Permission.ACTION_SAVE:
             case Permission.ACTION_UPDATE:
                 return doUpdateAccess(filterDataAccessConfig, context);
             default:
@@ -50,6 +47,22 @@ public class FieldFilterDataAccessHandler implements DataAccessHandler {
                     logger.debug("field filter not support for {}", access.getAction());
                 }
                 return true;
+        }
+    }
+
+    protected void applyUpdateParam(FieldFilterDataAccessConfig config, Object... parameter) {
+
+        for (Object data : parameter) {
+            for (String field : config.getFields()) {
+                try {
+                    //设置值为null,跳过修改
+                    BeanUtilsBean.getInstance()
+                            .getPropertyUtils()
+                            .setProperty(data, field, null);
+                } catch (Exception e) {
+                    logger.warn("can't set {} null", field, e);
+                }
+            }
         }
     }
 
@@ -61,52 +74,80 @@ public class FieldFilterDataAccessHandler implements DataAccessHandler {
      * @see org.apache.commons.beanutils.PropertyUtilsBean
      */
     protected boolean doUpdateAccess(FieldFilterDataAccessConfig accesses, AuthorizingContext params) {
-        Map<String, Object> paramsMap = params.getParamContext().getParams();
 
-        Object supportParam = paramsMap.size() == 0 ?
-                paramsMap.values().iterator().next() :
-                paramsMap.values().stream()
-                        .filter(param -> (param instanceof Entity) || (param instanceof Model) || (param instanceof Map))
-                        .findAny()
-                        .orElse(null);
-        if (null != supportParam) {
-            for (String field : accesses.getFields()) {
-                try {
-                    //设置值为null,跳过修改
-                    BeanUtilsBean.getInstance()
-                            .getPropertyUtils()
-                            .setProperty(supportParam, field, null);
-                } catch (Exception e) {
-                    logger.warn("can't set {} null", field, e);
-                }
+        boolean reactive = params.getParamContext().handleReactiveArguments(publisher -> {
+            if (publisher instanceof Mono) {
+                return Mono.from(publisher)
+                        .doOnNext(data -> applyUpdateParam(accesses, data));
+
             }
-        } else {
-            logger.warn("doUpdateAccess skip ,because can not found any support entity in param!");
+            if (publisher instanceof Flux) {
+                return Flux.from(publisher)
+                        .doOnNext(data -> applyUpdateParam(accesses, data));
+
+            }
+            return publisher;
+        });
+        if (reactive) {
+            return true;
         }
+
+        applyUpdateParam(accesses, params.getParamContext().getArguments());
         return true;
     }
 
     @SuppressWarnings("all")
+    protected void applyQueryParam(FieldFilterDataAccessConfig config, Object param) {
+        if (param instanceof QueryParam) {
+            Set<String> denyFields = config.getFields();
+            ((QueryParam) param).excludes(denyFields.toArray(new String[0]));
+            return;
+        }
+
+        Object r = InvokeResultUtils.convertRealResult(param);
+        if (r instanceof Collection) {
+            ((Collection) r).forEach(o -> setObjectPropertyNull(o, config.getFields()));
+        } else {
+            setObjectPropertyNull(r, config.getFields());
+        }
+
+    }
+
+    @SuppressWarnings("all")
     protected boolean doQueryAccess(FieldFilterDataAccessConfig access, AuthorizingContext context) {
-        if (context.getDefinition().getDataAccessDefinition().getPhased() == Phased.before) {
-            QueryParamEntity entity = context.getParamContext().getParams()
-                    .values().stream()
-                    .filter(QueryParamEntity.class::isInstance)
-                    .map(QueryParamEntity.class::cast)
-                    .findAny().orElse(null);
-            if (entity == null) {
-                logger.warn("try validate query access, but query entity is null or not instance of org.hswebframework.web.commons.entity.Entity");
+        if (context.getDefinition().getResources().getPhased() == Phased.before) {
+
+            boolean reactive = context
+                    .getParamContext()
+                    .handleReactiveArguments(publisher -> {
+                        if (publisher instanceof Mono) {
+                            return Mono.from(publisher)
+                                    .doOnNext(param -> {
+                                        applyQueryParam(access, param);
+                                    });
+                        }
+                        return publisher;
+                    });
+
+            if (reactive) {
                 return true;
             }
-            Set<String> denyFields = access.getFields();
-            entity.excludes(denyFields.toArray(new String[denyFields.size()]));
-        } else {
-            Object result = InvokeResultUtils.convertRealResult(context.getParamContext().getInvokeResult());
-            if (result instanceof Collection) {
-                ((Collection) result).forEach(o -> setObjectPropertyNull(o, access.getFields()));
-            } else {
-                setObjectPropertyNull(result, access.getFields());
+
+            for (Object argument : context.getParamContext().getArguments()) {
+                applyQueryParam(access, argument);
             }
+        } else {
+            if (context.getParamContext().getInvokeResult() instanceof Publisher) {
+                context.getParamContext().setInvokeResult(
+                        Flux.from((Publisher<?>) context.getParamContext().getInvokeResult())
+                                .doOnNext(result -> {
+                                    applyQueryParam(access, result);
+                                })
+                );
+
+                return true;
+            }
+            applyQueryParam(access, context.getParamContext().getInvokeResult());
         }
         return true;
     }

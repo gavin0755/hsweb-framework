@@ -30,11 +30,8 @@ public final class DefaultDataAccessController implements DataAccessController {
             throw new UnsupportedOperationException();
         }
         this.parent = parent;
-        addHandler(new CustomDataAccessHandler()).
-                addHandler(new OwnCreatedDataAccessHandler()).
-                addHandler(new ScriptDataAccessHandler()).
-                addHandler(new FieldFilterDataAccessHandler()).
-                addHandler(new FieldScopeDataAccessHandler());
+                addHandler(new FieldFilterDataAccessHandler())
+                .addHandler(new DimensionDataAccessHandler());
     }
 
     @Override

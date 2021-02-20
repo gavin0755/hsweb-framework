@@ -1,16 +1,12 @@
 package org.hswebframework.web.authorization.simple;
 
-import org.hswebframework.web.authorization.Authentication;
-import org.hswebframework.web.authorization.AuthenticationHolder;
-import org.hswebframework.web.authorization.AuthenticationManager;
+import org.hswebframework.web.authorization.*;
 import org.hswebframework.web.authorization.builder.AuthenticationBuilderFactory;
 import org.hswebframework.web.authorization.builder.DataAccessConfigBuilderFactory;
-import org.hswebframework.web.authorization.simple.builder.DataAccessConfigConvert;
+import org.hswebframework.web.authorization.simple.builder.DataAccessConfigConverter;
 import org.hswebframework.web.authorization.simple.builder.SimpleAuthenticationBuilderFactory;
 import org.hswebframework.web.authorization.simple.builder.SimpleDataAccessConfigBuilderFactory;
-import org.hswebframework.web.authorization.token.DefaultUserTokenManager;
-import org.hswebframework.web.authorization.token.UserTokenAuthenticationSupplier;
-import org.hswebframework.web.authorization.token.UserTokenManager;
+import org.hswebframework.web.authorization.token.*;
 import org.hswebframework.web.authorization.twofactor.TwoFactorValidatorManager;
 import org.hswebframework.web.authorization.twofactor.defaults.DefaultTwoFactorValidatorManager;
 import org.hswebframework.web.convert.CustomMessageConverter;
@@ -30,19 +26,36 @@ import java.util.List;
 public class DefaultAuthorizationAutoConfiguration {
 
     @Autowired(required = false)
-    private List<DataAccessConfigConvert> dataAccessConfigConverts;
+    private List<DataAccessConfigConverter> dataAccessConfigConverters;
 
     @Bean
     @ConditionalOnMissingBean(UserTokenManager.class)
-    @ConfigurationProperties(prefix = "hsweb.authorize")
+    @ConfigurationProperties(prefix = "hsweb.user-token")
     public UserTokenManager userTokenManager() {
         return new DefaultUserTokenManager();
     }
 
     @Bean
+    @ConditionalOnMissingBean
+//    @ConditionalOnBean(ReactiveAuthenticationManagerProvider.class)
+    public ReactiveAuthenticationManager reactiveAuthenticationManager(List<ReactiveAuthenticationManagerProvider> providers) {
+        return new CompositeReactiveAuthenticationManager(providers);
+    }
+
+    @Bean
+    @ConditionalOnBean(ReactiveAuthenticationManager.class)
+    public UserTokenReactiveAuthenticationSupplier userTokenReactiveAuthenticationSupplier(UserTokenManager userTokenManager,
+                                                                                           ReactiveAuthenticationManager authenticationManager) {
+        UserTokenReactiveAuthenticationSupplier supplier = new UserTokenReactiveAuthenticationSupplier(userTokenManager, authenticationManager);
+        ReactiveAuthenticationHolder.addSupplier(supplier);
+        return supplier;
+    }
+
+    @Bean
     @ConditionalOnBean(AuthenticationManager.class)
-    public UserTokenAuthenticationSupplier userTokenAuthenticationSupplier(AuthenticationManager authenticationManager) {
-        UserTokenAuthenticationSupplier supplier = new UserTokenAuthenticationSupplier(authenticationManager);
+    public UserTokenAuthenticationSupplier userTokenAuthenticationSupplier(UserTokenManager userTokenManager,
+                                                                           AuthenticationManager authenticationManager) {
+        UserTokenAuthenticationSupplier supplier = new UserTokenAuthenticationSupplier(userTokenManager, authenticationManager);
         AuthenticationHolder.addSupplier(supplier);
         return supplier;
     }
@@ -52,8 +65,8 @@ public class DefaultAuthorizationAutoConfiguration {
     @ConfigurationProperties(prefix = "hsweb.authorization.data-access", ignoreInvalidFields = true)
     public SimpleDataAccessConfigBuilderFactory dataAccessConfigBuilderFactory() {
         SimpleDataAccessConfigBuilderFactory factory = new SimpleDataAccessConfigBuilderFactory();
-        if (null != dataAccessConfigConverts) {
-            dataAccessConfigConverts.forEach(factory::addConvert);
+        if (null != dataAccessConfigConverters) {
+            dataAccessConfigConverters.forEach(factory::addConvert);
         }
         return factory;
     }

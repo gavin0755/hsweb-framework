@@ -1,80 +1,40 @@
 package org.hswebframework.web.authorization.basic.define;
 
-import org.hswebframework.web.authorization.annotation.Logical;
-import org.hswebframework.web.authorization.define.AuthorizeDefinition;
-import org.hswebframework.web.authorization.define.DataAccessDefinition;
-import org.hswebframework.web.authorization.define.Phased;
-import org.hswebframework.web.authorization.define.Script;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+import org.hswebframework.web.authorization.define.*;
 
-import java.util.Set;
+import java.lang.reflect.Method;
 
 /**
  * @author zhouhao
  */
-public class EmptyAuthorizeDefinition implements AuthorizeDefinition {
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public class EmptyAuthorizeDefinition implements AopAuthorizeDefinition {
 
-    public static final EmptyAuthorizeDefinition instance = new EmptyAuthorizeDefinition();
+    public static EmptyAuthorizeDefinition instance = new EmptyAuthorizeDefinition();
 
-    private EmptyAuthorizeDefinition() {
-    }
 
     @Override
-    public Phased getPhased() {
+    public ResourcesDefinition getResources() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public int getPriority() {
-        throw new UnsupportedOperationException();
-    }
+    public DimensionsDefinition getDimensions() {
 
-    @Override
-    public boolean isDataAccessControl() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Set<String> getPermissions() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String[] getPermissionDescription() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String[] getActionDescription() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Set<String> getActions() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Set<String> getRoles() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Set<String> getUser() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Script getScript() {
         throw new UnsupportedOperationException();
     }
 
     @Override
     public String getMessage() {
+
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Logical getLogical() {
+    public Phased getPhased() {
+
         throw new UnsupportedOperationException();
     }
 
@@ -84,7 +44,12 @@ public class EmptyAuthorizeDefinition implements AuthorizeDefinition {
     }
 
     @Override
-    public DataAccessDefinition getDataAccessDefinition() {
+    public Class<?> getTargetClass() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Method getTargetMethod() {
         throw new UnsupportedOperationException();
     }
 }

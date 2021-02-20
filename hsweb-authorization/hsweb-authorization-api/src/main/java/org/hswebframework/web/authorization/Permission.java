@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 http://www.hswebframework.org
+ * Copyright 2020 http://www.hswebframework.org
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,17 +17,14 @@
 
 package org.hswebframework.web.authorization;
 
-import lombok.NonNull;
 import org.hswebframework.web.authorization.access.DataAccessConfig;
 import org.hswebframework.web.authorization.access.FieldFilterDataAccessConfig;
 import org.hswebframework.web.authorization.access.ScopeDataAccessConfig;
 
 import java.io.Serializable;
-import java.util.Collections;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import static org.hswebframework.web.authorization.access.DataAccessConfig.DefaultType.DENY_FIELDS;
 
@@ -52,6 +49,10 @@ public interface Permission extends Serializable {
      * 新增
      */
     String ACTION_ADD = "add";
+    /**
+     * 保存
+     */
+    String ACTION_SAVE = "save";
     /**
      * 更新
      */
@@ -85,7 +86,20 @@ public interface Permission extends Serializable {
      */
     String getId();
 
+    /**
+     * @return 权限名称
+     */
     String getName();
+
+    /**
+     * @return 其他拓展字段
+     */
+    Map<String, Object> getOptions();
+
+    default Optional<Object> getOption(String key) {
+        return Optional.ofNullable(getOptions())
+                .map(map -> map.get(key));
+    }
 
     /**
      * 用户对此权限的可操作事件(按钮)
@@ -107,6 +121,13 @@ public interface Permission extends Serializable {
      */
     Set<DataAccessConfig> getDataAccesses();
 
+
+    default Set<DataAccessConfig> getDataAccesses(String action) {
+        return getDataAccesses()
+                .stream()
+                .filter(conf -> conf.getAction().equals(action))
+                .collect(Collectors.toSet());
+    }
 
     /**
      * 查找数据权限配置
@@ -132,9 +153,8 @@ public interface Permission extends Serializable {
      * @see FieldFilterDataAccessConfig#getFields()
      */
     default Optional<FieldFilterDataAccessConfig> findFieldFilter(String action) {
-        return findDataAccess(conf -> FieldFilterDataAccessConfig.class.isInstance(conf) && conf.getAction().equals(action));
+        return findDataAccess(conf -> conf instanceof FieldFilterDataAccessConfig && conf.getAction().equals(action));
     }
-
 
     /**
      * 获取不能执行操作的字段
@@ -144,7 +164,7 @@ public interface Permission extends Serializable {
      */
     default Set<String> findDenyFields(String action) {
         return findFieldFilter(action)
-                .filter(conf -> DENY_FIELDS.equals(conf.getType()))
+                .filter(conf -> DENY_FIELDS.equals(conf.getType().getId()))
                 .map(FieldFilterDataAccessConfig::getFields)
                 .orElseGet(Collections::emptySet);
     }
@@ -188,6 +208,9 @@ public interface Permission extends Serializable {
                         && scopeType.equals(((ScopeDataAccessConfig) config).getScopeType());
     }
 
+    Permission copy();
+
+    Permission copy(Predicate<String> actionFilter,Predicate<DataAccessConfig> dataAccessFilter);
 
     /**
      * 数据权限查找判断逻辑接口

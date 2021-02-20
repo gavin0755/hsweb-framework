@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 http://www.hswebframework.org
+ * Copyright 2020 http://www.hswebframework.org
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,48 +17,33 @@
 
 package org.hswebframework.web.authorization.simple;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.hswebframework.web.authorization.*;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.function.BiPredicate;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
+@Getter
+@Setter
 public class SimpleAuthentication implements Authentication {
 
     private static final long serialVersionUID = -2898863220255336528L;
 
     private User user;
 
-    private List<Role> roles;
+    private List<Permission> permissions = new ArrayList<>();
 
-    private List<Permission> permissions;
+    private List<Dimension> dimensions = new ArrayList<>();
 
     private Map<String, Serializable> attributes = new HashMap<>();
 
-    @Override
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public void setRoles(List<Role> roles) {
-        this.roles = roles;
-    }
-
-    public void setPermissions(List<Permission> permissions) {
-        this.permissions = permissions;
-    }
-
-    @Override
-    public List<Role> getRoles() {
-        return new ArrayList<>(roles);
-    }
-
-    @Override
-    public List<Permission> getPermissions() {
-        return new ArrayList<>(permissions);
+    public static Authentication of() {
+        return new SimpleAuthentication();
     }
 
     @Override
@@ -68,23 +53,46 @@ public class SimpleAuthentication implements Authentication {
     }
 
     @Override
-    public void setAttribute(String name, Serializable object) {
-        attributes.put(name, object);
-    }
-
-    @Override
-    public void setAttributes(Map<String, Serializable> attributes) {
-        this.attributes.putAll(attributes);
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public <T extends Serializable> T removeAttributes(String name) {
-        return (T) attributes.remove(name);
-    }
-
-    @Override
     public Map<String, Serializable> getAttributes() {
         return attributes;
+    }
+
+    public SimpleAuthentication merge(Authentication authentication) {
+        Map<String, Permission> mePermissionGroup = permissions.stream()
+                .collect(Collectors.toMap(Permission::getId, Function.identity()));
+        user = authentication.getUser();
+        attributes.putAll(authentication.getAttributes());
+        for (Permission permission : authentication.getPermissions()) {
+            Permission me = mePermissionGroup.get(permission.getId());
+            if (me == null) {
+                permissions.add(permission.copy());
+                continue;
+            }
+            me.getActions().addAll(permission.getActions());
+            me.getDataAccesses().addAll(permission.getDataAccesses());
+        }
+
+
+        for (Dimension dimension : authentication.getDimensions()) {
+            if (!getDimension(dimension.getType(), dimension.getId()).isPresent()) {
+                dimensions.add(dimension);
+            }
+        }
+        return this;
+    }
+
+    @Override
+    public Authentication copy(BiPredicate<Permission, String> permissionFilter,
+                               Predicate<Dimension> dimension) {
+        SimpleAuthentication authentication = new SimpleAuthentication();
+        authentication.setUser(user);
+        authentication.setDimensions(dimensions.stream().filter(dimension).collect(Collectors.toList()));
+        authentication.setPermissions(permissions
+                .stream()
+                .map(permission -> permission.copy(action -> permissionFilter.test(permission, action), conf -> true))
+                .filter(per -> !per.getActions().isEmpty())
+                .collect(Collectors.toList())
+        );
+        return authentication;
     }
 }

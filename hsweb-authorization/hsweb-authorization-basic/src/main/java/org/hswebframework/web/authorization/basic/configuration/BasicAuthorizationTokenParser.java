@@ -4,11 +4,12 @@ import org.apache.commons.codec.binary.Base64;
 import org.hswebframework.web.authorization.Authentication;
 import org.hswebframework.web.authorization.AuthenticationManager;
 import org.hswebframework.web.authorization.basic.web.AuthorizedToken;
-import org.hswebframework.web.authorization.basic.web.ParsedToken;
+import org.hswebframework.web.authorization.token.ParsedToken;
 import org.hswebframework.web.authorization.basic.web.UserTokenForTypeParser;
 import org.hswebframework.web.authorization.simple.PlainTextUsernamePasswordAuthenticationRequest;
 import org.hswebframework.web.authorization.token.UserToken;
 import org.hswebframework.web.authorization.token.UserTokenManager;
+import reactor.core.publisher.Mono;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -42,7 +43,7 @@ public class BasicAuthorizationTokenParser implements UserTokenForTypeParser {
         }
         try {
             String usernameAndPassword = new String(Base64.decodeBase64(authorization));
-            UserToken token = userTokenManager.getByToken(usernameAndPassword);
+            UserToken token = userTokenManager.getByToken(usernameAndPassword).blockOptional().orElse(null);
             if (token != null && token.isNormal()) {
                 return new ParsedToken() {
                     @Override
@@ -58,7 +59,9 @@ public class BasicAuthorizationTokenParser implements UserTokenForTypeParser {
             }
             if (usernameAndPassword.contains(":")) {
                 String[] arr = usernameAndPassword.split("[:]");
-                Authentication authentication = authenticationManager.authenticate(new PlainTextUsernamePasswordAuthenticationRequest(arr[0], arr[1]));
+                Authentication authentication = authenticationManager
+                        .authenticate(new PlainTextUsernamePasswordAuthenticationRequest(arr[0], arr[1]))
+                        ;
                 if (authentication != null) {
                     return new AuthorizedToken() {
                         @Override

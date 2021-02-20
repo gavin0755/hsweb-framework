@@ -1,15 +1,18 @@
 package org.hswebframework.web.authorization.basic.aop;
 
+import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
-import org.hswebframework.web.AopUtils;
+import org.hswebframework.web.aop.MethodInterceptorContext;
 import org.hswebframework.web.authorization.annotation.Authorize;
-import org.hswebframework.web.authorization.annotation.RequiresDataAccess;
-import org.hswebframework.web.authorization.annotation.RequiresExpression;
+import org.hswebframework.web.authorization.annotation.DataAccess;
+import org.hswebframework.web.authorization.annotation.Dimension;
 import org.hswebframework.web.authorization.basic.define.DefaultBasicAuthorizeDefinition;
 import org.hswebframework.web.authorization.basic.define.EmptyAuthorizeDefinition;
 import org.hswebframework.web.authorization.define.AuthorizeDefinition;
-import org.hswebframework.web.boost.aop.context.MethodInterceptorContext;
+import org.hswebframework.web.utils.AnnotationUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.CollectionUtils;
 
@@ -27,11 +30,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class DefaultAopMethodAuthorizeDefinitionParser implements AopMethodAuthorizeDefinitionParser {
 
-    private Map<CacheKey, AuthorizeDefinition> cache = new ConcurrentHashMap<>();
+    private final Map<CacheKey, AuthorizeDefinition> cache = new ConcurrentHashMap<>();
 
     private List<AopMethodAuthorizeDefinitionCustomizerParser> parserCustomizers;
 
-    private static Set<String> excludeMethodName = new HashSet<>(Arrays.asList("toString", "clone", "hashCode", "getClass"));
+    private static final Set<String> excludeMethodName = new HashSet<>(Arrays.asList("toString", "clone", "hashCode", "getClass"));
 
     @Autowired(required = false)
     public void setParserCustomizers(List<AopMethodAuthorizeDefinitionCustomizerParser> parserCustomizers) {
@@ -45,7 +48,7 @@ public class DefaultAopMethodAuthorizeDefinitionParser implements AopMethodAutho
 
     @Override
     @SuppressWarnings("all")
-    public AuthorizeDefinition parse(Class target, Method method, MethodInterceptorContext context) {
+    public AuthorizeDefinition parse(Class<?> target, Method method, MethodInterceptorContext context) {
         if (excludeMethodName.contains(method.getName())) {
             return null;
         }
@@ -71,91 +74,32 @@ public class DefaultAopMethodAuthorizeDefinitionParser implements AopMethodAutho
                 return definition;
             }
         }
-        Authorize classAuth = AopUtils.findAnnotation(target, Authorize.class);
-        Authorize methodAuth = AopUtils.findMethodAnnotation(target, method, Authorize.class);
 
-        RequiresDataAccess classDataAccess = AopUtils.findAnnotation(target, RequiresDataAccess.class);
+        Authorize annotation = AnnotationUtils.findAnnotation(target, method, Authorize.class);
 
-        RequiresDataAccess methodDataAccess = AopUtils.findMethodAnnotation(target, method, RequiresDataAccess.class);
-
-        RequiresExpression expression = AopUtils.findAnnotation(target, RequiresExpression.class);
-
-        if (classAuth == null && methodAuth == null && classDataAccess == null && methodDataAccess == null && expression == null) {
-            cache.put(key, EmptyAuthorizeDefinition.instance);
-            return null;
-        }
-
-        if ((methodAuth != null && methodAuth.ignore()) || (classAuth != null && classAuth.ignore())) {
+        if (annotation != null && annotation.ignore()) {
             cache.put(key, EmptyAuthorizeDefinition.instance);
             return null;
         }
         synchronized (cache) {
-            DefaultBasicAuthorizeDefinition authorizeDefinition = new DefaultBasicAuthorizeDefinition();
-            authorizeDefinition.setTargetClass(target);
-            authorizeDefinition.setTargetMethod(method);
-            if (methodAuth == null || methodAuth.merge()) {
-                authorizeDefinition.put(classAuth);
-            }
-
-            authorizeDefinition.put(methodAuth);
-
-            authorizeDefinition.put(expression);
-
-            authorizeDefinition.put(classDataAccess);
-
-            authorizeDefinition.put(methodDataAccess);
-
-            if (authorizeDefinition.getPermissionDescription().length == 0) {
-                if (classAuth != null) {
-                    authorizeDefinition.put(classAuth.dataAccess());
-                    String[] desc = classAuth.description();
-                    if (desc.length > 0) {
-                        authorizeDefinition.setPermissionDescription(desc);
-                    }
-                }
-            }
-
-            if (authorizeDefinition.getActionDescription().length == 0) {
-                if (methodAuth != null) {
-                    if (methodAuth.description().length != 0) {
-                        authorizeDefinition.setActionDescription(methodAuth.description());
-                    }
-                }
-            }
-
-            log.info("parsed authorizeDefinition {}.{} => {}.{} permission:{} actions:{}",
-                    target.getSimpleName(),
-                    method.getName(),
-                    authorizeDefinition.getPermissionDescription(),
-                    authorizeDefinition.getActionDescription(),
-                    authorizeDefinition.getPermissions(),
-                    authorizeDefinition.getActions());
-            cache.put(key, authorizeDefinition);
-            return authorizeDefinition;
+            return cache.computeIfAbsent(key, (__) -> {
+                return DefaultBasicAuthorizeDefinition.from(target, method);
+            });
         }
     }
 
-    public CacheKey buildCacheKey(Class target, Method method) {
+    public CacheKey buildCacheKey(Class<?> target, Method method) {
         return new CacheKey(ClassUtils.getUserClass(target), method);
     }
 
-    class CacheKey {
-        private Class  type;
-        private Method method;
+    @EqualsAndHashCode
+    static class CacheKey {
+        private final Class<?> type;
+        private final Method method;
 
-        public CacheKey(Class type, Method method) {
+        public CacheKey(Class<?> type, Method method) {
             this.type = type;
             this.method = method;
-        }
-
-        @Override
-        public int hashCode() {
-            return Arrays.asList(type, method).hashCode();
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            return obj != null && this.hashCode() == obj.hashCode();
         }
     }
 
