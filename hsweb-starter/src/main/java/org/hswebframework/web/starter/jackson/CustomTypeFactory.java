@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.type.*;
 import com.fasterxml.jackson.databind.util.ArrayBuilders;
 import com.fasterxml.jackson.databind.util.LRUMap;
+import com.fasterxml.jackson.databind.util.LookupCache;
 import org.hswebframework.web.api.crud.entity.EntityFactory;
 
 public class CustomTypeFactory extends TypeFactory {
@@ -15,7 +16,7 @@ public class CustomTypeFactory extends TypeFactory {
         this.entityFactory = factory;
     }
 
-    protected CustomTypeFactory(LRUMap<Object, JavaType> typeCache, TypeParser p,
+    protected CustomTypeFactory(LookupCache<Object, JavaType> typeCache, TypeParser p,
                                 TypeModifier[] mods, ClassLoader classLoader) {
         super(typeCache, p, mods, classLoader);
     }
@@ -33,7 +34,7 @@ public class CustomTypeFactory extends TypeFactory {
 
     @Override
     public TypeFactory withModifier(TypeModifier mod) {
-        LRUMap<Object, JavaType> typeCache = _typeCache;
+        LookupCache<Object, JavaType> typeCache = _typeCache;
         TypeModifier[] mods;
         if (mod == null) { // mostly for unit tests
             mods = null;
@@ -56,7 +57,7 @@ public class CustomTypeFactory extends TypeFactory {
     protected JavaType _fromWellKnownInterface(ClassStack context, Class<?> rawType, TypeBindings bindings, JavaType superClass, JavaType[] superInterfaces) {
         JavaType javaType = super._fromWellKnownInterface(context, rawType, bindings, superClass, superInterfaces);
         if (javaType == null) {
-            rawType = entityFactory.getInstanceType(rawType);
+            rawType = entityFactory.getInstanceType(rawType, false);
             if (rawType != null) {
                 javaType = SimpleType.constructUnsafe(rawType);
             }
@@ -69,7 +70,7 @@ public class CustomTypeFactory extends TypeFactory {
 
         JavaType javaType = super._fromWellKnownClass(context, rawType, bindings, superClass, superInterfaces);
         if (javaType == null) {
-            rawType = entityFactory.getInstanceType(rawType);
+            rawType = entityFactory.getInstanceType(rawType, false);
             if (rawType != null) {
                 javaType = SimpleType.constructUnsafe(rawType);
             }

@@ -63,11 +63,11 @@ public abstract class CompareUtils {
             return compare(((Map) target), source);
         }
 
-        if (source.getClass().isEnum()) {
+        if (source.getClass().isEnum() || source instanceof Enum) {
             return compare(((Enum) source), target);
         }
 
-        if (target.getClass().isEnum()) {
+        if (target.getClass().isEnum() || source instanceof Enum) {
             return compare(((Enum) target), source);
         }
 
@@ -156,10 +156,6 @@ public abstract class CompareUtils {
         return compare(Arrays.asList(number), target);
     }
 
-    public static boolean compare(Boolean bool, Object target) {
-        return bool.equals(target) || String.valueOf(bool).equals(target);
-    }
-
 
     public static boolean compare(Number number, Object target) {
         if (number == target) {
@@ -182,9 +178,9 @@ public abstract class CompareUtils {
         if (target instanceof String) {
             //日期格式的字符串?
             String stringValue = String.valueOf(target);
-            if (DateFormatter.isSupport(stringValue)) {
+            DateFormatter dateFormatter = DateFormatter.getFormatter(stringValue);
+            if (dateFormatter != null) {
                 //格式化为相同格式的字符串进行对比
-                DateFormatter dateFormatter = DateFormatter.getFormatter(stringValue);
                 return (dateFormatter.toString(new Date(number.longValue())).equals(stringValue));
             }
             try {
@@ -264,9 +260,9 @@ public abstract class CompareUtils {
         if (target instanceof String) {
             //日期格式的字符串?
             String stringValue = String.valueOf(target);
-            if (DateFormatter.isSupport(stringValue)) {
+            DateFormatter dateFormatter = DateFormatter.getFormatter(stringValue);
+            if (dateFormatter != null) {
                 //格式化为相同格式的字符串进行对比
-                DateFormatter dateFormatter = DateFormatter.getFormatter(stringValue);
                 return (dateFormatter.toString(date).equals(stringValue));
             }
         }

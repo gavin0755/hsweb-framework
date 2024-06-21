@@ -5,10 +5,18 @@ import org.hswebframework.ezorm.rdb.exception.DuplicateKeyException;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveDelete;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveUpdate;
 import org.hswebframework.ezorm.rdb.mapping.defaults.SaveResult;
+import org.hswebframework.web.crud.events.EntityCreatedEvent;
+import org.hswebframework.web.crud.events.EntityDeletedEvent;
+import org.hswebframework.web.crud.events.EntityModifyEvent;
+import org.hswebframework.web.crud.events.EntitySavedEvent;
 import org.hswebframework.web.crud.service.GenericReactiveCrudService;
+import org.hswebframework.web.event.AsyncEvent;
 import org.hswebframework.web.exception.BusinessException;
+import org.hswebframework.web.system.authorization.api.entity.DimensionEntity;
 import org.hswebframework.web.system.authorization.api.entity.DimensionUserEntity;
 import org.hswebframework.web.system.authorization.api.event.ClearUserAuthorizationCacheEvent;
+import org.hswebframework.web.system.authorization.api.event.DimensionBindEvent;
+import org.hswebframework.web.system.authorization.api.event.DimensionUnbindEvent;
 import org.hswebframework.web.system.authorization.api.event.UserDeletedEvent;
 import org.reactivestreams.Publisher;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,9 +24,15 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.function.Function3;
 
-import java.util.Collection;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static java.util.stream.Collectors.*;
 
 @Slf4j
 public class DefaultDimensionUserService extends GenericReactiveCrudService<DimensionUserEntity, String> {
@@ -26,87 +40,98 @@ public class DefaultDimensionUserService extends GenericReactiveCrudService<Dime
     @Autowired
     private ApplicationEventPublisher eventPublisher;
 
+    //处理用户被删除时,同步删除维度绑定信息
     @EventListener
     public void handleUserDeleteEntity(UserDeletedEvent event) {
-        createDelete()
-                .where(DimensionUserEntity::getUserId, event.getUser().getId())
-                .execute()
-                .subscribe(i -> log.debug("user deleted,clear user dimension!"));
+        event.async(this.createDelete()
+                        .where(DimensionUserEntity::getUserId, event.getUser().getId())
+                        .execute()
+                        .doOnSuccess(i -> log.debug("user deleted,clear user dimension!"))
+        );
     }
 
-    @Override
-    public Mono<SaveResult> save(Publisher<DimensionUserEntity> entityPublisher) {
-        return Flux.from(entityPublisher)
-                   .doOnNext(DimensionUserEntity::generateId)
-                   .doOnNext(entity -> eventPublisher.publishEvent(ClearUserAuthorizationCacheEvent.of(entity.getUserId())))
-                   .as(super::save);
+    //转发保存维度信息到DimensionBindEvent事件,并清空权限缓存
+    @EventListener
+    public void dispatchDimensionBind(EntitySavedEvent<DimensionUserEntity> event) {
+        event.async(
+                this.publishEvent(Flux.fromIterable(event.getEntity()), DimensionBindEvent::new)
+        );
     }
 
-    @Override
-    public Mono<Integer> updateById(String id, Mono<DimensionUserEntity> entityPublisher) {
-        return entityPublisher
-                .doOnNext(entity -> eventPublisher.publishEvent(ClearUserAuthorizationCacheEvent.of(entity.getUserId())))
-                .as(e -> super.updateById(id, e));
+    //新增绑定时转发DimensionBindEvent并清空用户权限信息
+    @EventListener
+    public void dispatchDimensionBind(EntityCreatedEvent<DimensionUserEntity> event) {
+        event.async(
+                this.publishEvent(Flux.fromIterable(event.getEntity()), DimensionBindEvent::new)
+        );
     }
 
-    @Override
-    public Mono<Integer> insert(Publisher<DimensionUserEntity> entityPublisher) {
-        return Flux.from(entityPublisher)
-                   .doOnNext(DimensionUserEntity::generateId)
-                   .doOnNext(entity -> eventPublisher.publishEvent(ClearUserAuthorizationCacheEvent.of(entity.getUserId())))
-                   .as(super::insert)
-                   .onErrorMap(DuplicateKeyException.class, (err) -> new BusinessException("重复的绑定请求"));
+    //删除绑定时转发DimensionUnbindEvent并清空用户权限信息
+    @EventListener
+    public void dispatchDimensionUnbind(EntityDeletedEvent<DimensionUserEntity> event) {
+        event.async(
+                this.publishEvent(Flux.fromIterable(event.getEntity()), DimensionUnbindEvent::new)
+        );
     }
 
-    @Override
-    public Mono<Integer> insertBatch(Publisher<? extends Collection<DimensionUserEntity>> entityPublisher) {
-        return Flux.from(entityPublisher)
-                   .doOnNext(entity -> eventPublisher
-                           .publishEvent(ClearUserAuthorizationCacheEvent
-                                                 .of(entity.stream()
-                                                           .map(DimensionUserEntity::getUserId)
-                                                           .collect(Collectors.toSet()))))
-                   .as(super::insertBatch);
+    //修改绑定信息时清空权限
+    @EventListener
+    public void handleModifyEvent(EntityModifyEvent<DimensionUserEntity> event) {
+        event.async(
+                this.clearUserCache(event.getAfter())
+        );
     }
 
-    @Override
-    public Mono<Integer> deleteById(Publisher<String> idPublisher) {
-        return findById(Flux.from(idPublisher))
-                .doOnNext(entity -> eventPublisher.publishEvent(ClearUserAuthorizationCacheEvent.of(entity.getUserId())))
-                .map(DimensionUserEntity::getId)
-                .as(super::deleteById);
+    //维度被删除时同时删除绑定信息
+    @EventListener
+    public void handleDimensionDeletedEntity(EntityDeletedEvent<DimensionEntity> event) {
+        event.async(
+                Flux.fromIterable(event.getEntity())
+                    .collect(groupingBy(DimensionEntity::getTypeId,
+                                        mapping(DimensionEntity::getId, toSet())))
+                    .flatMapIterable(Map::entrySet)
+                    .flatMap(entry -> this
+                            .createDelete()
+                            .where(DimensionUserEntity::getDimensionTypeId, entry.getKey())
+                            .in(DimensionUserEntity::getDimensionId, entry.getValue())
+                            .execute())
+        );
+
     }
 
-    @Override
-    @SuppressWarnings("all")
-    public ReactiveUpdate<DimensionUserEntity> createUpdate() {
-        return super.createUpdate()
-                    .onExecute((update, r) -> r
-                            .doOnSuccess(i -> {
-                                this.createQuery()
-                                    .select(DimensionUserEntity::getUserId)
-                                    .setParam(update.toQueryParam())
-                                    .fetch()
-                                    .map(DimensionUserEntity::getUserId)
-                                    .collectList()
-                                    .map(ClearUserAuthorizationCacheEvent::of)
-                                    .subscribe();
-                            }));
+    private Flux<DimensionUserEntity> publishEvent(Publisher<DimensionUserEntity> stream,
+                                                   Function3<String, String, List<String>, AsyncEvent> event) {
+        Flux<DimensionUserEntity> cache = Flux.from(stream).doOnNext(DimensionUserEntity::generateId).cache();
+
+        Set<Mono<Void>> jobs = ConcurrentHashMap.newKeySet();
+
+        return cache
+                .groupBy(DimensionUserEntity::getDimensionTypeId)
+                .flatMap(typeGroup -> {
+                    String type = typeGroup.key();
+                    return typeGroup
+                            .groupBy(DimensionUserEntity::getDimensionId)
+                            .flatMap(dimensionIdGroup -> {
+                                String dimensionId = dimensionIdGroup.key();
+                                return dimensionIdGroup
+                                        .map(DimensionUserEntity::getUserId)
+                                        .collectList()
+                                        .doOnNext(userIdList -> jobs.add(event.apply(type, dimensionId, userIdList).publish(eventPublisher)))
+                                        .flatMapIterable(Function.identity());
+                            });
+                })
+                .<Collection<String>>collect(HashSet::new, Collection::add)
+                .flatMap(userList -> ClearUserAuthorizationCacheEvent.of(userList).publish(eventPublisher))
+                .then(Mono.defer(() -> Flux.concat(jobs).then()))
+                .thenMany(cache);
     }
 
-    @Override
-    @SuppressWarnings("all")
-    public ReactiveDelete createDelete() {
-        return super.createDelete()
-                    .onExecute((delete, r) -> r.doOnSuccess(i -> {
-                        this.createQuery()
-                            .select(DimensionUserEntity::getUserId)
-                            .setParam(delete.toQueryParam())
-                            .fetch()
-                            .map(DimensionUserEntity::getUserId)
-                            .collectList()
-                            .map(ClearUserAuthorizationCacheEvent::of)
-                            .subscribe();
-                    }));
+    private Mono<Void> clearUserCache(List<DimensionUserEntity> entities) {
+        return Flux.fromIterable(entities)
+                   .map(DimensionUserEntity::getUserId)
+                   .distinct()
+                   .collectList()
+                   .flatMap(list -> ClearUserAuthorizationCacheEvent.of(list).publish(eventPublisher));
     }
+
 }

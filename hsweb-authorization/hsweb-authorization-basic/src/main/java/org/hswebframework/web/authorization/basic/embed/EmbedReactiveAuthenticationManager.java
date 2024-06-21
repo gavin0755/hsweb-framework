@@ -1,6 +1,8 @@
 package org.hswebframework.web.authorization.basic.embed;
 
 import lombok.AllArgsConstructor;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.hswebframework.web.authorization.Authentication;
 import org.hswebframework.web.authorization.AuthenticationRequest;
 import org.hswebframework.web.authorization.ReactiveAuthenticationManager;
@@ -12,18 +14,26 @@ import reactor.core.publisher.Mono;
 
 /**
  * @author zhouhao
- * @since 3.0.0-RC
+ * @since 4.0.0
  */
-
 @Order(10)
 @AllArgsConstructor
 public class EmbedReactiveAuthenticationManager implements ReactiveAuthenticationManagerProvider {
 
-    private EmbedAuthenticationProperties properties;
+    private final EmbedAuthenticationProperties properties;
 
     @Override
     public Mono<Authentication> authenticate(Mono<AuthenticationRequest> request) {
-        return request.map(properties::authenticate);
+        if (MapUtils.isEmpty(properties.getUsers())) {
+            return Mono.empty();
+        }
+        return request.
+                handle((req, sink) -> {
+                    Authentication auth = properties.authenticate(req);
+                    if (auth != null) {
+                        sink.next(auth);
+                    }
+                });
 
     }
 

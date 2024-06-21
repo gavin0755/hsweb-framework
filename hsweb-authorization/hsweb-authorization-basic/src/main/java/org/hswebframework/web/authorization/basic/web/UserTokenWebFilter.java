@@ -19,11 +19,13 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.context.Context;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 @Component
 @Slf4j
@@ -40,18 +42,23 @@ public class UserTokenWebFilter implements WebFilter, BeanPostProcessor {
     @NonNull
     public Mono<Void> filter(@NonNull ServerWebExchange exchange, WebFilterChain chain) {
 
-        return chain.filter(exchange)
-                .subscriberContext(ContextUtils.acceptContext(ctx ->
-                        Flux.fromIterable(parsers)
-                                .flatMap(parser -> parser.parseToken(exchange))
-                                .subscribe(token -> ctx.put(ParsedToken.class, token))))
-                .subscriberContext(ReactiveLogger.start("requestId", exchange.getRequest().getId()))
-                ;
+        return Flux
+                .fromIterable(parsers)
+                .flatMap(parser -> parser.parseToken(exchange))
+                .next()
+                .map(token -> chain
+                        .filter(exchange)
+                        .contextWrite(Context.of(ParsedToken.class, token)))
+                .defaultIfEmpty(chain.filter(exchange))
+                .flatMap(Function.identity())
+                .contextWrite(ReactiveLogger.start("requestId", exchange.getRequest().getId()));
+
     }
 
     @EventListener
     public void handleUserSign(AuthorizationSuccessEvent event) {
-        ReactiveUserTokenGenerator generator = event.<String>getParameter("tokenType")
+        ReactiveUserTokenGenerator generator = event
+                .<String>getParameter("tokenType")
                 .map(tokenGeneratorMap::get)
                 .orElseGet(() -> tokenGeneratorMap.get("default"));
         if (generator != null) {
@@ -60,14 +67,17 @@ public class UserTokenWebFilter implements WebFilter, BeanPostProcessor {
             if (StringUtils.hasText(token.getToken())) {
                 event.getResult().put("token", token.getToken());
                 long expires = event.getParameter("expires")
-                        .map(String::valueOf)
-                        .map(Long::parseLong)
-                        .orElse(token.getTimeout());
+                                    .map(String::valueOf)
+                                    .map(Long::parseLong)
+                                    .orElse(token.getTimeout());
                 event.getResult().put("expires", expires);
                 event.async(userTokenManager
-                        .signIn(token.getToken(), token.getType(), event.getAuthentication().getUser().getId(), expires)
-                        .doOnNext(t -> log.debug("user [{}] sign in", t.getUserId()))
-                        .then());
+                                    .signIn(token.getToken(), token.getType(), event
+                                            .getAuthentication()
+                                            .getUser()
+                                            .getId(), expires)
+                                    .doOnNext(t -> log.debug("user [{}] sign in", t.getUserId()))
+                                    .then());
             }
         }
 

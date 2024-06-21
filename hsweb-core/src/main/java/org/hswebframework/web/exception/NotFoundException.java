@@ -24,11 +24,29 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 
 @ResponseStatus(HttpStatus.NOT_FOUND)
 public class NotFoundException extends BusinessException {
-    public NotFoundException(String message) {
-        super(message, 404);
+    public NotFoundException(String message, Object... args) {
+        super(message, 404, args);
     }
 
     public NotFoundException() {
-        this("记录不存在");
+        this("error.not_found");
+    }
+
+    /**
+     * 不填充线程栈的异常，在一些对线程栈不敏感，且对异常不可控（如: 来自未认证请求产生的异常）的情况下不填充线程栈对性能有利。
+     */
+    public static class NoStackTrace extends NotFoundException {
+        public NoStackTrace(String code, Object... args) {
+            super(code, args);
+        }
+
+        public NoStackTrace() {
+            super();
+        }
+
+        @Override
+        public final synchronized Throwable fillInStackTrace() {
+            return this;
+        }
     }
 }

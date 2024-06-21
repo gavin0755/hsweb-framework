@@ -1,14 +1,20 @@
 package org.hswebframework.web.bean;
 
+import com.google.common.collect.ImmutableMap;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.SneakyThrows;
 import org.junit.Assert;
 import org.junit.Test;
+import org.springframework.util.ClassUtils;
 
+import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -60,6 +66,43 @@ public class FastBeanCopierTest {
     }
 
     @Test
+    public void testMapList() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("templates",   new HashMap() {
+            {
+                put("0", Collections.singletonMap("name", "test"));
+                put("1", Collections.singletonMap("name", "test"));
+            }
+        });
+
+        Config config = FastBeanCopier.copy(data, new Config());
+
+        Assert.assertNotNull(config);
+        Assert.assertNotNull(config.templates);
+        System.out.println(config.templates);
+        Assert.assertEquals(2,config.templates.size());
+
+
+    }
+
+    @Getter
+    @Setter
+    public static class Config {
+        private List<Template> templates;
+    }
+
+    @Getter
+    @Setter
+    public static class Template {
+        private String name;
+
+        @Override
+        public String toString() {
+            return "name:"+name;
+        }
+    }
+
+    @Test
     public void testCopyMap() {
 
 
@@ -82,13 +125,74 @@ public class FastBeanCopierTest {
         System.out.println(FastBeanCopier.copy(target, new Target()));
     }
 
+    @Test
+    @SneakyThrows
+    public void testCrossClassLoader() {
+        URL clazz = new File("target/test-classes").getAbsoluteFile().toURI().toURL();
+
+        System.out.println(clazz);
+        URLClassLoader loader = new URLClassLoader(new URL[]{
+                clazz
+        }, ClassUtils.getDefaultClassLoader()){
+            @Override
+            protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                try {
+                    Class<?> clazz = loadSelfClass(name);
+                    if (null != clazz) {
+                        if (resolve) {
+                            resolveClass(clazz);
+                        }
+                        return clazz;
+                    }
+                } catch (Throwable ignore) {
+
+                }
+                return super.loadClass(name, resolve);
+            }
+
+            @SneakyThrows
+            public synchronized Class<?> loadSelfClass(String name) {
+                Class<?> clazz = super.findLoadedClass(name);
+                if (clazz == null) {
+                    clazz = super.findClass(name);
+                    resolveClass(clazz);
+                }
+                return clazz;
+            }
+
+            @Override
+            public Enumeration<URL> getResources(String name) throws IOException {
+                return findResources(name);
+            }
+
+            @Override
+            public URL getResource(String name) {
+                return findResource(name);
+            }
+        };
+        Class<?> sourceClass = loader.loadClass(Source.class.getName());
+        Assert.assertNotSame(sourceClass, Source.class);
+
+        Object source = sourceClass.newInstance();
+        FastBeanCopier.copy(Collections.singletonMap("name","测试"),source);
+
+        Map<String,Object> map = FastBeanCopier.copy(source,new HashMap<>());
+        System.out.println(map);
+
+        loader.close();
+        map = FastBeanCopier.copy(source,new HashMap<>());
+
+        System.out.println(map);
+
+    }
+
 
     @Test
     public void testProxy() {
-        AtomicReference<Object> reference=new AtomicReference<>();
+        AtomicReference<Object> reference = new AtomicReference<>();
 
-        ProxyTest test = (ProxyTest) Proxy.newProxyInstance(ClassLoader.getSystemClassLoader(),
-                new Class[]{ProxyTest.class}, (proxy, method, args) -> {
+        ProxyTest test = (ProxyTest) Proxy.newProxyInstance(ClassUtils.getDefaultClassLoader(),
+                                                            new Class[]{ProxyTest.class}, (proxy, method, args) -> {
                     if (method.getName().equals("getName")) {
                         return "test";
                     }
@@ -103,14 +207,21 @@ public class FastBeanCopierTest {
 
         Target source = new Target();
 
-        FastBeanCopier.copy(test,source);
-        Assert.assertEquals(source.getName(),test.getName());
+        FastBeanCopier.copy(test, source);
+        Assert.assertEquals(source.getName(), test.getName());
 
 
         source.setName("test2");
-        FastBeanCopier.copy(source,test);
+        FastBeanCopier.copy(source, test);
 
-        Assert.assertEquals(reference.get(),source.getName());
+        Assert.assertEquals(reference.get(), source.getName());
+    }
+
+    @Test
+    public void testGetProperty() {
+
+        Assert.assertEquals(1, FastBeanCopier.getProperty(ImmutableMap.of("a", 1, "b", 2), "a"));
+
     }
 
 

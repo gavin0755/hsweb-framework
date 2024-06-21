@@ -20,6 +20,7 @@ package org.hswebframework.web.api.crud.entity;
 
 
 import org.hswebframework.utils.RandomUtil;
+import org.hswebframework.web.exception.ValidationException;
 import org.hswebframework.web.id.IDGenerator;
 import org.springframework.util.CollectionUtils;
 
@@ -28,26 +29,91 @@ import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * 支持树结构的实体类
+ *
+ * @param <PK> 主键类型
+ * @author zhouhao
+ * @since 4.0
+ */
 @SuppressWarnings("all")
 public interface TreeSupportEntity<PK> extends Entity {
 
+    /**
+     * 获取主键
+     *
+     * @return ID
+     */
     PK getId();
 
+    /**
+     * 设置主键
+     *
+     * @param id ID
+     */
     void setId(PK id);
 
+    /**
+     * 获取树路径,树路径表示当前节点所在位置
+     * 格式通常为: aBcD-EfgH-iJkl,以-分割,一个分割表示一级.
+     * 比如: aBcD-EfgH-iJkl表示 当前节点在第三级,上一个节点为EfgH.
+     *
+     * @return 树路径
+     */
     String getPath();
 
+    /**
+     * 设置路径,此值通常不需要手动设置,在进行保存时，由service自动进行分配.
+     *
+     * @param path 路径
+     * @see TreeSupportEntity#expandTree2List(TreeSupportEntity, IDGenerator)
+     */
     void setPath(String path);
 
+    /**
+     * 获取上级ID
+     *
+     * @return 上级ID
+     */
     PK getParentId();
 
+    /**
+     * 设置上级节点ID
+     *
+     * @param parentId
+     */
     void setParentId(PK parentId);
 
+    /**
+     * 获取节点层级
+     *
+     * @return 节点层级
+     */
     Integer getLevel();
 
+    /**
+     * 设置节点层级
+     *
+     * @return 节点层级
+     */
     void setLevel(Integer level);
 
+    /**
+     * 获取所有子节点,默认情况下此字段只会返回null.可以使用{@link TreeSupportEntity#list2tree(Collection, BiConsumer)}将
+     * 列表结构转为树形结构
+     *
+     * @param <T> 当前实体类型
+     * @return 自己节点
+     */
     <T extends TreeSupportEntity<PK>> List<T> getChildren();
+
+    @Override
+    default void tryValidate(Class<?>... groups) {
+        Entity.super.tryValidate(groups);
+        if (getId() != null && Objects.equals(getId(), getParentId())) {
+            throw new ValidationException("parentId", "子节点ID不能与父节点ID相同");
+        }
+    }
 
     /**
      * 根据path获取父节点的path
@@ -118,11 +184,6 @@ public interface TreeSupportEntity<PK> extends Entity {
             }
         }
 
-        if (CollectionUtils.isEmpty(root.getChildren())) {
-            target.add(root);
-            return;
-        }
-
         //尝试设置id
         PK parentId = root.getId();
         if (parentId == null) {
@@ -130,18 +191,21 @@ public interface TreeSupportEntity<PK> extends Entity {
             root.setId(parentId);
         }
 
+        if (CollectionUtils.isEmpty(root.getChildren())) {
+            target.add(root);
+            return;
+        }
+
         //所有节点处理队列
         Queue<T> queue = new LinkedList<>();
         queue.add(root);
         //已经处理过的节点过滤器
-        Set<Long> filter = new HashSet<>();
+        Set<T> filter = new HashSet<>();
 
         for (T parent = queue.poll(); parent != null; parent = queue.poll()) {
-            long hash = System.identityHashCode(parent);
-            if (filter.contains(hash)) {
+            if (!filter.add(parent)) {
                 continue;
             }
-            filter.add(hash);
 
             //处理子节点
             if (!CollectionUtils.isEmpty(parent.getChildren())) {
@@ -158,7 +222,9 @@ public interface TreeSupportEntity<PK> extends Entity {
                     if (child instanceof SortSupportEntity && parent instanceof SortSupportEntity) {
                         SortSupportEntity sortableParent = ((SortSupportEntity) parent);
                         SortSupportEntity sortableChild = ((SortSupportEntity) child);
-                        sortableChild.setSortIndex(sortableParent.getSortIndex() * 100 + index++);
+                        if (sortableChild.getSortIndex() == null) {
+                            sortableChild.setSortIndex(sortableParent.getSortIndex() * 100 + index++);
+                        }
                     }
                     queue.add((T) child);
                 }
@@ -180,7 +246,8 @@ public interface TreeSupportEntity<PK> extends Entity {
      * @return 树形结构集合
      */
     static <N extends TreeSupportEntity<PK>, PK> List<N> list2tree(Collection<N> dataList, BiConsumer<N, List<N>> childConsumer) {
-        return list2tree(dataList, childConsumer, (Function<TreeHelper<N, PK>, Predicate<N>>) predicate -> node -> node == null || predicate.getNode(node.getParentId()) == null);
+        return list2tree(dataList, childConsumer, (Function<TreeHelper<N, PK>, Predicate<N>>) predicate -> node -> node == null || predicate
+                .getNode(node.getParentId()) == null);
     }
 
     static <N extends TreeSupportEntity<PK>, PK> List<N> list2tree(Collection<N> dataList,
@@ -202,37 +269,11 @@ public interface TreeSupportEntity<PK> extends Entity {
     static <N extends TreeSupportEntity<PK>, PK> List<N> list2tree(final Collection<N> dataList,
                                                                    final BiConsumer<N, List<N>> childConsumer,
                                                                    final Function<TreeHelper<N, PK>, Predicate<N>> predicateFunction) {
-        Objects.requireNonNull(dataList, "source list can not be null");
-        Objects.requireNonNull(childConsumer, "child consumer can not be null");
-        Objects.requireNonNull(predicateFunction, "root predicate function can not be null");
-
-        Supplier<Stream<N>> streamSupplier = () -> dataList.stream();
-        // id,node
-        Map<PK, N> cache = new HashMap<>();
-        // parentId,children
-        Map<PK, List<N>> treeCache = streamSupplier.get()
-                .peek(node -> cache.put(node.getId(), node))
-                .filter(e -> e.getParentId() != null)
-                .collect(Collectors.groupingBy(TreeSupportEntity::getParentId));
-
-        Predicate<N> rootNodePredicate = predicateFunction.apply(new TreeHelper<N, PK>() {
-            @Override
-            public List<N> getChildren(PK parentId) {
-                return treeCache.get(parentId);
-            }
-
-            @Override
-            public N getNode(PK id) {
-                return cache.get(id);
-            }
-        });
-
-        return streamSupplier.get()
-                //设置每个节点的子节点
-                .peek(node -> childConsumer.accept(node, treeCache.get(node.getId())))
-                //获取根节点
-                .filter(rootNodePredicate)
-                .collect(Collectors.toList());
+        return TreeUtils.list2tree(dataList,
+                                   TreeSupportEntity::getId,
+                                   TreeSupportEntity::getParentId,
+                                   childConsumer,
+                                   (helper, node) -> predicateFunction.apply(helper).test(node));
     }
 
     /**

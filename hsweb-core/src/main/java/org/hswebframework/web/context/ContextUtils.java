@@ -17,20 +17,16 @@ public class ContextUtils {
         return contextThreadLocal.get();
     }
 
+    @Deprecated
     public static Mono<Context> reactiveContext() {
-        return Mono.subscriberContext()
-                .<Context>handle((context, sink) -> {
-                    if (context.hasKey(Context.class)) {
-                        sink.next(context.get(Context.class));
-                    }else {
-                        sink.complete();
-                    }
-                })
-                .subscriberContext(acceptContext(ctx -> {
+        return Mono
+                .<Context>deferContextual(context->Mono.justOrEmpty(context.getOrEmpty(Context.class)))
+                .contextWrite(acceptContext(ctx -> {
 
                 }));
     }
 
+    @Deprecated
     public static Function<reactor.util.context.Context, reactor.util.context.Context> acceptContext(Consumer<Context> contextConsumer) {
         return context -> {
             if (!context.hasKey(Context.class)) {

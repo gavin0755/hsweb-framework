@@ -15,10 +15,21 @@ import java.util.function.Supplier;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class UnSupportedReactiveCache<E> implements ReactiveCache<E> {
 
-    private static final UnSupportedReactiveCache INSTANCE = new UnSupportedReactiveCache();
+    private static final UnSupportedReactiveCache<?> INSTANCE = new UnSupportedReactiveCache<>();
 
+    @SuppressWarnings("all")
     public static <E> ReactiveCache<E> getInstance() {
-        return INSTANCE;
+        return (UnSupportedReactiveCache) INSTANCE;
+    }
+
+    @Override
+    public Flux<E> getFlux(Object key, Supplier<Flux<E>> loader) {
+        return loader.get();
+    }
+
+    @Override
+    public Mono<E> getMono(Object key, Supplier<Mono<E>> loader) {
+        return loader.get();
     }
 
     @Override

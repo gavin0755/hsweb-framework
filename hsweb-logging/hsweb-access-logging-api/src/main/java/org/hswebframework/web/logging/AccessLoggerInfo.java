@@ -7,9 +7,11 @@ import java.io.PrintWriter;
 import java.io.Serializable;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.StringJoiner;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -115,7 +117,10 @@ public class AccessLoggerInfo {
             Class<?>[] parameterTypes = method.getParameterTypes();
 
             for (int i = 0; i < parameterTypes.length; i++) {
-                methodAppender.add(parameterTypes[i].getSimpleName().concat(" ").concat(parameterNames.length > i ? parameterNames[i] : ("arg" + i)));
+                methodAppender.add(parameterTypes[i]
+                                           .getSimpleName()
+                                           .concat(" ")
+                                           .concat(parameterNames.length > i ? parameterNames[i] : ("arg" + i)));
             }
             map.put("method", methodAppender.toString());
         }
@@ -152,5 +157,19 @@ public class AccessLoggerInfo {
         setHttpHeaders(info.getHeaders());
         setUrl(info.getPath());
         setContext(info.getContext());
+    }
+
+    public void putContext(Map<String,String> context) {
+        if (this.context == null) {
+            this.context = new ConcurrentHashMap<>();
+        }
+        this.context.putAll(context);
+    }
+
+    public void putContext(String key, Object value) {
+        if (this.context == null) {
+            this.context = new ConcurrentHashMap<>();
+        }
+        this.context.put(key, String.valueOf(value));
     }
 }

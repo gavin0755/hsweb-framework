@@ -1,6 +1,6 @@
 package org.hswebframework.web.crud.service;
 
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.hswebframework.ezorm.core.param.QueryParam;
 import org.hswebframework.ezorm.rdb.mapping.SyncDelete;
 import org.hswebframework.ezorm.rdb.mapping.SyncQuery;
@@ -73,8 +73,25 @@ public interface CrudService<E, K> {
     }
 
     @Transactional(transactionManager = TransactionManagers.jdbcTransactionManager)
+    default SaveResult save(E entity) {
+        return getRepository()
+                .save(Collections.singletonList(entity));
+    }
+
+    @Transactional(transactionManager = TransactionManagers.jdbcTransactionManager)
+    default SaveResult save(List<E> entities) {
+        return getRepository()
+                .save(entities);
+    }
+
+    @Transactional(transactionManager = TransactionManagers.jdbcTransactionManager)
     default int deleteById(Collection<K> idArr) {
         return getRepository().deleteById(idArr);
+    }
+
+    @Transactional(transactionManager = TransactionManagers.jdbcTransactionManager)
+    default int deleteById(K idArr) {
+        return deleteById(Collections.singletonList(idArr));
     }
 
     @Transactional(readOnly = true, transactionManager = TransactionManagers.jdbcTransactionManager)

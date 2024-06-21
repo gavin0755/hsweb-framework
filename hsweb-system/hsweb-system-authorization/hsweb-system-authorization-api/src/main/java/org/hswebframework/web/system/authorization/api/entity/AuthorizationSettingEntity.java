@@ -8,7 +8,10 @@ import org.hswebframework.ezorm.rdb.mapping.annotation.Comment;
 import org.hswebframework.ezorm.rdb.mapping.annotation.DefaultValue;
 import org.hswebframework.ezorm.rdb.mapping.annotation.JsonCodec;
 import org.hswebframework.web.api.crud.entity.Entity;
+import org.hswebframework.web.bean.FastBeanCopier;
+import org.hswebframework.web.crud.annotation.EnableEntityEvent;
 import org.hswebframework.web.validator.CreateGroup;
+import org.springframework.util.CollectionUtils;
 
 import javax.persistence.*;
 import javax.validation.constraints.NotBlank;
@@ -16,17 +19,22 @@ import javax.validation.constraints.NotNull;
 import java.sql.JDBCType;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 @Table(name = "s_autz_setting_info", indexes = {
         @Index(name = "idx_sasi_dss", columnList = "dimension_type,dimension_target,state desc"),
         @Index(name = "idx_sasi_pdd", columnList = "permission,dimension_type,dimension_target",unique = true)
 })
+@Comment("授权信息")
 @Getter
 @Setter
+@EnableEntityEvent
 public class AuthorizationSettingEntity implements Entity {
     @Id
     @Column(length = 32)
     @GeneratedValue(generator = "md5")
+    @Schema(description = "ID")
     private String id;
 
     @Column(length = 32, nullable = false, updatable = false)
@@ -61,6 +69,7 @@ public class AuthorizationSettingEntity implements Entity {
     @Comment("状态")
     @NotNull(message = "状态不能为空",groups = CreateGroup.class)
     @Schema(description = "状态,0禁用,1启用")
+    @DefaultValue("1")
     private Byte state;
 
     @Column
@@ -86,4 +95,16 @@ public class AuthorizationSettingEntity implements Entity {
     @Comment("是否合并")
     @Schema(description = "冲突时,是否合并")
     private Boolean merge;
+
+    public AuthorizationSettingEntity copy(Predicate<String> actionFilter,
+                                           Predicate<DataAccessEntity> dataAccessFilter){
+        AuthorizationSettingEntity newSetting= FastBeanCopier.copy(this,new AuthorizationSettingEntity());
+        if(!CollectionUtils.isEmpty(newSetting.getActions())){
+            newSetting.setActions(newSetting.getActions().stream().filter(actionFilter).collect(Collectors.toSet()));
+        }
+        if(!CollectionUtils.isEmpty(newSetting.getDataAccesses())){
+            newSetting.setDataAccesses(newSetting.getDataAccesses().stream().filter(dataAccessFilter).collect(Collectors.toList()));
+        }
+        return newSetting;
+    }
 }

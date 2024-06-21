@@ -5,7 +5,7 @@
     <parent>
         <artifactId>hsweb-datasource</artifactId>
         <groupId>org.hswebframework.web</groupId>
-        <version>4.0.9</version>
+        <version>4.0.17-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
 
     </parent>
@@ -55,6 +55,7 @@
         <dependency>
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.29</version>
             <scope>test</scope>
         </dependency>
 

@@ -27,8 +27,10 @@ import org.hswebframework.web.bean.FastBeanCopier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -37,14 +39,16 @@ import java.util.function.Supplier;
  */
 @SuppressWarnings("unchecked")
 public class MapperEntityFactory implements EntityFactory, BeanFactory {
-    private Map<Class, Mapper> realTypeMapper = new HashMap<>();
-    private Logger logger = LoggerFactory.getLogger(this.getClass());
-    private Map<String, PropertyCopier> copierCache = new HashMap<>();
+    @SuppressWarnings("all")
+    private final Map<Class<?>, Mapper> realTypeMapper = new ConcurrentHashMap<>();
+    private final Logger logger = LoggerFactory.getLogger(this.getClass());
+    @SuppressWarnings("all")
+    private final Map<String, PropertyCopier> copierCache = new ConcurrentHashMap<>();
 
     private static final DefaultMapperFactory DEFAULT_MAPPER_FACTORY = clazz -> {
         String simpleClassName = clazz.getPackage().getName().concat(".Simple").concat(clazz.getSimpleName());
         try {
-            return defaultMapper(org.springframework.util.ClassUtils.forName(simpleClassName,null));
+            return defaultMapper(org.springframework.util.ClassUtils.forName(simpleClassName, null));
         } catch (ClassNotFoundException ignore) {
             // throw new NotFoundException(e.getMessage());
         }
@@ -64,8 +68,18 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
     public MapperEntityFactory() {
     }
 
-    public MapperEntityFactory(Map<Class<?>, Mapper> realTypeMapper) {
+    public MapperEntityFactory(Map<Class<?>, Mapper<?>> realTypeMapper) {
         this.realTypeMapper.putAll(realTypeMapper);
+    }
+
+    public <T> MapperEntityFactory addMapping(Class<T> target, Supplier<? extends T> mapper) {
+        realTypeMapper.put(target, new Mapper(mapper.get().getClass(), mapper));
+        return this;
+    }
+
+    public <T> MapperEntityFactory addMappingIfAbsent(Class<T> target, Supplier<? extends T> mapper) {
+        realTypeMapper.putIfAbsent(target, new Mapper(mapper.get().getClass(), mapper));
+        return this;
     }
 
     public <T> MapperEntityFactory addMapping(Class<T> target, Mapper<? extends T> mapper) {
@@ -73,9 +87,14 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
         return this;
     }
 
-    public MapperEntityFactory addCopier(PropertyCopier copier) {
-        Class source = ClassUtils.getGenericType(copier.getClass(), 0);
-        Class target = ClassUtils.getGenericType(copier.getClass(), 1);
+    public <T> MapperEntityFactory addMappingIfAbsent(Class<T> target, Mapper<? extends T> mapper) {
+        realTypeMapper.putIfAbsent(target, mapper);
+        return this;
+    }
+
+    public <S, T> MapperEntityFactory addCopier(PropertyCopier<S, T> copier) {
+        Class<S> source = (Class<S>) ClassUtils.getGenericType(copier.getClass(), 0);
+        Class<T> target = (Class<T>) ClassUtils.getGenericType(copier.getClass(), 1);
         if (source == null || source == Object.class) {
             throw new UnsupportedOperationException("generic type " + source + " not support");
         }
@@ -91,7 +110,7 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
         return this;
     }
 
-    private String getCopierCacheKey(Class source, Class target) {
+    private String getCopierCacheKey(Class<?> source, Class<?> target) {
         return source.getName().concat("->").concat(target.getName());
     }
 
@@ -106,13 +125,15 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
             }
 
             return (T) defaultPropertyCopier.copyProperties(source, target);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.warn("copy properties error", e);
         }
         return target;
     }
 
-    protected <T> Mapper<T> initCache(Class<T> beanClass) {
+    static final Mapper NON_MAPPER = new Mapper(null, null);
+
+    protected <T> Mapper<T> createMapper(Class<T> beanClass) {
         Mapper<T> mapper = null;
         Class<T> realType = null;
         ServiceLoader<T> serviceLoader = ServiceLoader.load(beanClass, this.getClass().getClassLoader());
@@ -122,26 +143,38 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
         }
 
         if (realType == null) {
-            mapper = defaultMapperFactory.apply(beanClass);
+            if (!Modifier.isInterface(beanClass.getModifiers()) && !Modifier.isAbstract(beanClass.getModifiers())) {
+                realType = beanClass;
+            } else {
+                mapper = defaultMapperFactory.apply(beanClass);
+            }
         }
-        if (!Modifier.isInterface(beanClass.getModifiers()) && !Modifier.isAbstract(beanClass.getModifiers())) {
-            realType = beanClass;
-        }
+
         if (mapper == null && realType != null) {
             if (logger.isDebugEnabled() && realType != beanClass) {
                 logger.debug("use instance {} for {}", realType, beanClass);
             }
-            mapper = new Mapper<>(realType, new DefaultInstanceGetter(realType));
+            mapper = new Mapper<>(realType, new DefaultInstanceGetter<>(realType));
         }
-        if (mapper != null) {
-            realTypeMapper.put(beanClass, mapper);
-        }
-        return mapper;
+
+        return mapper == null ? NON_MAPPER : mapper;
     }
 
     @Override
     public <T> T newInstance(Class<T> beanClass) {
-        return newInstance(beanClass, null);
+        return newInstance(beanClass, (Class<? extends T>) null);
+    }
+
+    @Override
+    public <T> T newInstance(Class<T> entityClass, Supplier<? extends T> defaultFactory) {
+        if (entityClass == null) {
+            return null;
+        }
+        Mapper<T> mapper = realTypeMapper.computeIfAbsent(entityClass, this::createMapper);
+        if (mapper != null && mapper != NON_MAPPER) {
+            return mapper.getInstanceGetter().get();
+        }
+        return defaultFactory.get();
     }
 
     @Override
@@ -149,12 +182,8 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
         if (beanClass == null) {
             return null;
         }
-        Mapper<T> mapper = realTypeMapper.get(beanClass);
-        if (mapper != null) {
-            return mapper.getInstanceGetter().get();
-        }
-        mapper = initCache(beanClass);
-        if (mapper != null) {
+        Mapper<T> mapper = realTypeMapper.computeIfAbsent(beanClass, this::createMapper);
+        if (mapper != null && mapper != NON_MAPPER) {
             return mapper.getInstanceGetter().get();
         }
         if (defaultClass != null) {
@@ -170,7 +199,7 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
             return (T) new HashSet<>();
         }
 
-        throw new NotFoundException("can't create instance for " + beanClass);
+        throw new NotFoundException("error.cant_create_instance", beanClass);
     }
 
     @Override
@@ -182,21 +211,16 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
                 || beanClass.isEnum()) {
             return null;
         }
-        Mapper<T> mapper = realTypeMapper.get(beanClass);
-        if (null != mapper) {
+        Mapper<T> mapper = realTypeMapper.computeIfAbsent(
+                beanClass,
+                clazz -> autoRegister ? createMapper(clazz) : null);
+
+        if (null != mapper && mapper != NON_MAPPER) {
             return mapper.getTarget();
         }
-        if (autoRegister) {
-            mapper = initCache(beanClass);
-            if (mapper != null) {
-                return mapper.getTarget();
-            }
-
-            return Modifier.isAbstract(beanClass.getModifiers())
-                    || Modifier.isInterface(beanClass.getModifiers())
-                    ? null : beanClass;
-        }
-        return null;
+        return Modifier.isAbstract(beanClass.getModifiers())
+                || Modifier.isInterface(beanClass.getModifiers())
+                ? null : beanClass;
     }
 
     public void setDefaultMapperFactory(DefaultMapperFactory defaultMapperFactory) {
@@ -209,8 +233,8 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
     }
 
     public static class Mapper<T> {
-        Class<T> target;
-        Supplier<T> instanceGetter;
+        final Class<T> target;
+        final Supplier<T> instanceGetter;
 
         public Mapper(Class<T> target, Supplier<T> instanceGetter) {
             this.target = target;
@@ -235,16 +259,17 @@ public class MapperEntityFactory implements EntityFactory, BeanFactory {
     }
 
     static class DefaultInstanceGetter<T> implements Supplier<T> {
-        Class<T> type;
+        final Constructor<T> constructor;
 
+        @SneakyThrows
         public DefaultInstanceGetter(Class<T> type) {
-            this.type = type;
+            this.constructor = type.getConstructor();
         }
 
         @Override
         @SneakyThrows
         public T get() {
-            return type.newInstance();
+            return constructor.newInstance();
         }
     }
 }

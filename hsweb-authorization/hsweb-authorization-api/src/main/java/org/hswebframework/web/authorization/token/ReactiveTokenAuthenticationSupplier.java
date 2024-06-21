@@ -20,13 +20,10 @@ public class ReactiveTokenAuthenticationSupplier implements ReactiveAuthenticati
 
     @Override
     public Mono<Authentication> get() {
-        return ContextUtils.reactiveContext()
-                .flatMap(context ->
-                        context.get(ContextKey.of(ParsedToken.class))
-                                .map(t -> tokenManager.getByToken(t.getToken()))
-                                .orElseGet(Mono::empty))
-                .flatMap(auth -> ReactiveLogger.mdc("userId", auth.getUser().getId())
-                        .then(ReactiveLogger.mdc("username", auth.getUser().getName()))
-                        .thenReturn(auth));
+        return Mono
+                .deferContextual(context -> context
+                        .<ParsedToken>getOrEmpty(ParsedToken.class)
+                        .map(t -> tokenManager.getByToken(t.getToken()))
+                        .orElse(Mono.empty()));
     }
 }

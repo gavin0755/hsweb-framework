@@ -51,14 +51,21 @@ public final class AuthenticationHolder {
     private static final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     private static Optional<Authentication> get(Function<AuthenticationSupplier, Optional<Authentication>> function) {
-
-        return Flux.fromStream(suppliers.stream().map(function))
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .reduceWith(SimpleAuthentication::new, SimpleAuthentication::merge)
-                .filter(auth->auth.getUser()!=null)
-                .map(Authentication.class::cast)
-                .blockOptional();
+        int size = suppliers.size();
+        if (size == 0) {
+            return Optional.empty();
+        }
+        if (size == 1) {
+            return function.apply(suppliers.get(0));
+        }
+        SimpleAuthentication merge = new SimpleAuthentication();
+        for (AuthenticationSupplier supplier : suppliers) {
+            function.apply(supplier).ifPresent(merge::merge);
+        }
+        if (merge.getUser() == null) {
+            return Optional.empty();
+        }
+        return Optional.of(merge);
     }
 
     /**

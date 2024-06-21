@@ -18,7 +18,9 @@
 
 package org.hswebframework.web.authorization.exception;
 
+import lombok.Getter;
 import org.hswebframework.web.authorization.token.TokenState;
+import org.hswebframework.web.exception.I18nSupportException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
@@ -28,8 +30,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * @author zhouhao
  * @since 3.0
  */
+@Getter
 @ResponseStatus(HttpStatus.UNAUTHORIZED)
-public class UnAuthorizedException extends RuntimeException {
+public class UnAuthorizedException extends I18nSupportException {
     private static final long serialVersionUID = 2422918455013900645L;
 
     private final TokenState state;
@@ -52,7 +55,29 @@ public class UnAuthorizedException extends RuntimeException {
         this.state = state;
     }
 
-    public TokenState getState() {
-        return state;
+    /**
+     * 不填充线程栈的异常，在一些对线程栈不敏感，且对异常不可控（如: 来自未认证请求产生的异常）的情况下不填充线程栈对性能有利。
+     */
+    public static class NoStackTrace extends UnAuthorizedException {
+        public NoStackTrace() {
+            super();
+        }
+
+        public NoStackTrace(TokenState state) {
+            super(state);
+        }
+
+        public NoStackTrace(String message, TokenState state) {
+            super(message, state);
+        }
+
+        public NoStackTrace(String message, TokenState state, Throwable cause) {
+            super(message, state, cause);
+        }
+
+        @Override
+        public final synchronized Throwable fillInStackTrace() {
+            return this;
+        }
     }
 }

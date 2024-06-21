@@ -5,17 +5,18 @@ import org.hswebframework.web.dictionary.service.DefaultDictionaryItemService;
 import org.hswebframework.web.dictionary.service.DefaultDictionaryService;
 import org.hswebframework.web.dictionary.webflux.WebfluxDictionaryController;
 import org.hswebframework.web.dictionary.webflux.WebfluxDictionaryItemController;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-@Configuration
+@AutoConfiguration
 @EnableConfigurationProperties(DictionaryProperties.class)
 public class DictionaryAutoConfiguration {
 
 
-    @Configuration(proxyBeanMethods = false)
+    @AutoConfiguration
     static class DictionaryServiceConfiguration {
 
         @Bean
@@ -40,7 +41,7 @@ public class DictionaryAutoConfiguration {
     }
 
 
-    @Configuration
+    @AutoConfiguration
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
     static class DictionaryWebFluxConfiguration {
 

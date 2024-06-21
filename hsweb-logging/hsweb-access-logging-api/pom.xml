@@ -5,7 +5,7 @@
     <parent>
         <artifactId>hsweb-logging</artifactId>
         <groupId>org.hswebframework.web</groupId>
-        <version>4.0.9</version>
+        <version>4.0.17-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -13,5 +13,13 @@
     <artifactId>hsweb-access-logging-api</artifactId>
 
     <description>访问日志API模块</description>
+    <dependencies>
+        <dependency>
+            <groupId>org.hswebframework.web</groupId>
+            <artifactId>hsweb-core</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
 
 </project>

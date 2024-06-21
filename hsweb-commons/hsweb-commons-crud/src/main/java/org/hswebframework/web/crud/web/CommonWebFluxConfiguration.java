@@ -1,5 +1,8 @@
 package org.hswebframework.web.crud.web;
 
+import org.hswebframework.web.i18n.WebFluxLocaleFilter;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -9,24 +12,37 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.ReactiveAdapterRegistry;
 import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.web.reactive.accept.RequestedContentTypeResolver;
+import org.springframework.web.server.WebFilter;
 
-@Configuration
+@AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
 public class CommonWebFluxConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public CommonErrorControllerAdvice commonErrorControllerAdvice(){
+    public CommonErrorControllerAdvice commonErrorControllerAdvice() {
         return new CommonErrorControllerAdvice();
     }
 
+    @Bean
+    @ConditionalOnClass(name = "io.r2dbc.spi.R2dbcException")
+    @ConditionalOnMissingBean
+    public R2dbcErrorControllerAdvice r2dbcErrorControllerAdvice() {
+        return new R2dbcErrorControllerAdvice();
+    }
 
     @Bean
-    @ConditionalOnProperty(prefix = "hsweb.webflux.response-wrapper",name = "enabled",havingValue = "true",matchIfMissing = true)
+    @ConditionalOnProperty(prefix = "hsweb.webflux.response-wrapper", name = "enabled", havingValue = "true", matchIfMissing = true)
     @ConfigurationProperties(prefix = "hsweb.webflux.response-wrapper")
     public ResponseMessageWrapper responseMessageWrapper(ServerCodecConfigurer codecConfigurer,
                                                          RequestedContentTypeResolver resolver,
-                                                         ReactiveAdapterRegistry registry){
-        return new ResponseMessageWrapper(codecConfigurer.getWriters(),resolver,registry);
+                                                         ReactiveAdapterRegistry registry) {
+        return new ResponseMessageWrapper(codecConfigurer.getWriters(), resolver, registry);
     }
+
+    @Bean
+    public WebFilter localeWebFilter() {
+        return new WebFluxLocaleFilter();
+    }
+
 }

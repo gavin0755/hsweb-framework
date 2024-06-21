@@ -24,7 +24,7 @@
 
     <groupId>org.hswebframework.web</groupId>
     <artifactId>hsweb-framework</artifactId>
-    <version>4.0.9</version>
+    <version>4.0.17-SNAPSHOT</version>
     <modules>
         <module>hsweb-starter</module>
         <module>hsweb-core</module>
@@ -39,7 +39,7 @@
     <packaging>pom</packaging>
 
     <name>hsweb framework</name>
-    <url>http://www.hswebframework.org</url>
+    <url>https://github.com/hs-web</url>
     <inceptionYear>2016</inceptionYear>
     <description>hsweb (haʊs wɛb)
         是一个用于快速搭建企业后台管理系统的基础项目,集成一揽子便捷功能如:通用增删改查，在线代码生成，权限管理(可控制到列和行)，动态多数据源分布式事务，动态脚本，动态定时任务，在线数据库维护等等
@@ -48,7 +48,7 @@
     <licenses>
         <license>
             <name>The Apache License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
         </license>
     </licenses>
 
@@ -79,23 +79,22 @@
         <java.version>1.8</java.version>
         <project.build.jdk>${java.version}</project.build.jdk>
 
-        <spring.boot.version>2.3.3.RELEASE</spring.boot.version>
+        <spring.boot.version>2.7.18</spring.boot.version>
 
-        <javassist.version>3.20.0-GA</javassist.version>
-        <activiti.version>5.19.0.2</activiti.version>
+        <javassist.version>3.29.2-GA</javassist.version>
 
-        <fastjson.version>1.2.74</fastjson.version>
-        <h2.version>1.4.200</h2.version>
+        <fastjson.version>1.2.83</fastjson.version>
+        <h2.version>2.2.220</h2.version>
         <mysql.version>5.1.39</mysql.version>
         <cglib.version>3.2.2</cglib.version>
         <aspectj.version>1.6.12</aspectj.version>
 
-        <hsweb.ezorm.version>4.0.9</hsweb.ezorm.version>
-        <hsweb.utils.version>3.0.2</hsweb.utils.version>
+        <hsweb.ezorm.version>4.1.2-SNAPSHOT</hsweb.ezorm.version>
+        <hsweb.utils.version>3.0.4</hsweb.utils.version>
         <hsweb.expands.version>3.0.2</hsweb.expands.version>
         <swagger.version>2.7.0</swagger.version>
 
-        <r2dbc.version>Arabba-RELEASE</r2dbc.version>
+        <r2dbc.version>Borca-SR2</r2dbc.version>
     </properties>
 
     <profiles>
@@ -177,12 +176,15 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.0</version>
+                <version>0.8.8</version>
                 <executions>
                     <execution>
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
+                        <configuration>
+                            <propertyName>jacocoArgLine</propertyName>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>report</id>
@@ -220,11 +222,14 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.1</version>
+                <version>3.11.0</version>
                 <configuration>
                     <source>${project.build.jdk}</source>
                     <target>${project.build.jdk}</target>
                     <encoding>${project.build.sourceEncoding}</encoding>
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
 
@@ -252,15 +257,13 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.17</version>
+                <version>2.22.0</version>
                 <configuration>
                     <includes>
                         <include>**/*Test.java</include>
-                        <include>**/*Test.groovy</include>
                         <include>**/*Tests.java</include>
-                        <include>**/*Test.groovy</include>
-                        <include>**/*Spec.java</include>
                     </includes>
+                    <argLine>-Dfile.encoding=UTF-8 ${jacocoArgLine}</argLine>
                 </configuration>
             </plugin>
         </plugins>
@@ -324,6 +327,13 @@
 <!--                <artifactId>spring-boot-starter-data-r2dbc</artifactId>-->
 <!--                <version>2.3.3.RELEASE</version>-->
 <!--            </dependency>-->
+
+            <dependency>
+                <groupId>com.google.code.findbugs</groupId>
+                <artifactId>jsr305</artifactId>
+                <version>3.0.2</version>
+            </dependency>
+
             <dependency>
                 <groupId>io.r2dbc</groupId>
                 <artifactId>r2dbc-bom</artifactId>
@@ -339,6 +349,12 @@
             </dependency>
 
             <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>32.0.0-jre</version>
+            </dependency>
+
+            <dependency>
                 <groupId>io.vavr</groupId>
                 <artifactId>vavr</artifactId>
                 <version>0.9.2</version>
@@ -347,7 +363,7 @@
             <dependency>
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
-                <version>1.16.18</version>
+                <version>1.18.30</version>
             </dependency>
 
             <dependency>
@@ -391,6 +407,18 @@
                 <groupId>commons-beanutils</groupId>
                 <artifactId>commons-beanutils</artifactId>
                 <version>1.9.4</version>
+<!--                <exclusions>-->
+<!--                    <exclusion>-->
+<!--                        <groupId>commons-collections</groupId>-->
+<!--                        <artifactId>commons-collections</artifactId>-->
+<!--                    </exclusion>-->
+<!--                </exclusions>-->
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-collections4</artifactId>
+                <version>4.4</version>
             </dependency>
 
             <dependency>
@@ -452,10 +480,23 @@
     </dependencyManagement>
 
     <repositories>
+
+        <repository>
+            <id>aliyun-nexus</id>
+            <name>aliyun</name>
+            <url>https://maven.aliyun.com/nexus/content/groups/public/</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+
         <repository>
             <id>hsweb-nexus</id>
             <name>Nexus Release Repository</name>
-            <url>https://nexus.hsweb.me/content/groups/public/</url>
+            <url>https://nexus.jetlinks.cn/content/groups/public/</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
             <snapshots>
                 <enabled>true</enabled>
                 <updatePolicy>
@@ -464,30 +505,18 @@
             </snapshots>
         </repository>
 
-        <repository>
-            <id>aliyun-nexus</id>
-            <name>aliyun</name>
-            <url>https://maven.aliyun.com/nexus/content/groups/public/</url>
-        </repository>
-
-        <repository>
-            <id>spring.io</id>
-            <name>spring</name>
-            <url>https://repo.spring.io/milestone</url>
-        </repository>
-
     </repositories>
 
     <distributionManagement>
         <repository>
             <id>releases</id>
             <name>Nexus Release Repository</name>
-            <url>https://nexus.hsweb.me/content/repositories/releases/</url>
+            <url>https://nexus.jetlinks.cn/content/repositories/releases/</url>
         </repository>
         <snapshotRepository>
             <id>snapshots</id>
             <name>Nexus Snapshot Repository</name>
-            <url>https://nexus.hsweb.me/content/repositories/snapshots/</url>
+            <url>https://nexus.jetlinks.cn/content/repositories/snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 

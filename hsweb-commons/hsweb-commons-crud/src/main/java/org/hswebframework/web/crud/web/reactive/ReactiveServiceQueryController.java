@@ -3,6 +3,7 @@ package org.hswebframework.web.crud.web.reactive;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.hswebframework.web.api.crud.entity.PagerResult;
+import org.hswebframework.web.api.crud.entity.QueryNoPagingOperation;
 import org.hswebframework.web.api.crud.entity.QueryOperation;
 import org.hswebframework.web.api.crud.entity.QueryParamEntity;
 import org.hswebframework.web.authorization.annotation.Authorize;
@@ -35,7 +36,7 @@ public interface ReactiveServiceQueryController<E, K> {
      */
     @GetMapping("/_query/no-paging")
     @QueryAction
-    @QueryOperation(summary = "使用GET方式分页动态查询(不返回总数)",
+    @QueryNoPagingOperation(summary = "使用GET方式分页动态查询(不返回总数)",
             description = "此操作不返回分页总数,如果需要获取全部数据,请设置参数paging=false")
     default Flux<E> query(@Parameter(hidden = true) QueryParamEntity query) {
         return getService()
@@ -100,15 +101,35 @@ public interface ReactiveServiceQueryController<E, K> {
                     .collectList()
                     .map(list -> PagerResult.of(query.getTotal(), list, query));
         }
-
-        return Mono.zip(
-                getService().createQuery().setParam(query).count(),
-                getService().createQuery().setParam(query).fetch().collectList(),
-                (total, data) -> PagerResult.of(total, data, query)
-        );
+        return getService().queryPager(query);
 
     }
 
+    /**
+     * POST方式动态查询.
+     *
+     * <pre>
+     *     POST /_query
+     *
+     *     {
+     *         "pageIndex":0,
+     *         "pageSize":20,
+     *         "where":"name like 张%", //放心使用,没有SQL注入
+     *         "orderBy":"id desc",
+     *         "terms":[ //高级条件
+     *             {
+     *                 "column":"name",
+     *                 "termType":"like",
+     *                 "value":"张%"
+     *             }
+     *         ]
+     *     }
+     * </pre>
+     *
+     * @param query 查询条件
+     * @return 结果流
+     * @see QueryParamEntity
+     */
     @PostMapping("/_query")
     @QueryAction
     @SuppressWarnings("all")
@@ -117,40 +138,109 @@ public interface ReactiveServiceQueryController<E, K> {
         return query.flatMap(q -> queryPager(q));
     }
 
+    /**
+     * POST方式动态查询数量.
+     *
+     * <pre>
+     *     POST /_count
+     *
+     *     {
+     *         "pageIndex":0,
+     *         "pageSize":20,
+     *         "where":"name like 张%", //放心使用,没有SQL注入
+     *         "orderBy":"id desc",
+     *         "terms":[ //高级条件
+     *             {
+     *                 "column":"name",
+     *                 "termType":"like",
+     *                 "value":"张%"
+     *             }
+     *         ]
+     *     }
+     * </pre>
+     *
+     * @param query 查询条件
+     * @return 查询结果
+     * @see QueryParamEntity
+     */
     @PostMapping("/_count")
     @QueryAction
     @Operation(summary = "使用POST方式查询总数")
     default Mono<Integer> count(@RequestBody Mono<QueryParamEntity> query) {
-        return query.flatMap(this::count);
+        return getService().count(query);
     }
 
     /**
-     * 统计查询
+     * GET方式动态查询数量.
      *
      * <pre>
-     *     GET /_count
+     *
+     *    GET /_count?pageIndex=0&pageSize=20&where=name is 张三&orderBy=id desc
+     *
      * </pre>
      *
      * @param query 查询条件
-     * @return 统计结果
+     * @return 查询结果
+     * @see QueryParamEntity
      */
     @GetMapping("/_count")
     @QueryAction
-    @QueryOperation(summary = "使用GET方式查询总数")
+    @QueryNoPagingOperation(summary = "使用GET方式查询总数")
     default Mono<Integer> count(@Parameter(hidden = true) QueryParamEntity query) {
-        return getService()
-                .createQuery()
-                .setParam(query)
-                .count();
+        return Mono.defer(() -> getService().count(query));
     }
 
+    @PostMapping("/_exists")
+    @QueryAction
+    @Operation(summary = "使用POST方式判断数据是否存在")
+    default Mono<Boolean> exists(@RequestBody Mono<QueryParamEntity> query) {
+        return query
+                .flatMap(param -> getService()
+                        .createQuery()
+                        .setParam(param)
+                        .fetchOne()
+                        .hasElement());
+    }
+
+    /**
+     * 使用GET方式判断数据是否存在.
+     *
+     * <pre>
+     *
+     *    GET /_exists?where=name is 张三
+     *
+     * </pre>
+     *
+     * @param query 查询条件
+     * @return 查询结果
+     * @see QueryParamEntity
+     */
+    @GetMapping("/_exists")
+    @QueryAction
+    @QueryNoPagingOperation(summary = "使用GET方式判断数据是否存在")
+    default Mono<Boolean> exists(@Parameter(hidden = true) QueryParamEntity query) {
+        return exists(Mono.just(query));
+    }
+
+    /**
+     * 根据ID查询.
+     * <pre>
+     * {@code
+     *     GET /{id}
+     * }
+     * </pre>
+     *
+     * @param id ID
+     * @return 结果流
+     * @see QueryParamEntity
+     */
     @GetMapping("/{id:.+}")
     @QueryAction
     @Operation(summary = "根据ID查询")
     default Mono<E> getById(@PathVariable K id) {
         return getService()
                 .findById(id)
-                .switchIfEmpty(Mono.error(NotFoundException::new));
+                .switchIfEmpty(Mono.error(NotFoundException.NoStackTrace::new));
     }
 
 }

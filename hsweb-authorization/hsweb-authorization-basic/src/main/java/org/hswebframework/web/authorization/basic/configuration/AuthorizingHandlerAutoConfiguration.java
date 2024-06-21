@@ -7,6 +7,7 @@ import org.hswebframework.web.authorization.access.DataAccessHandler;
 import org.hswebframework.web.authorization.basic.aop.AopMethodAuthorizeDefinitionParser;
 import org.hswebframework.web.authorization.basic.embed.EmbedAuthenticationProperties;
 import org.hswebframework.web.authorization.basic.embed.EmbedReactiveAuthenticationManager;
+import org.hswebframework.web.authorization.basic.handler.AuthorizationLoginLoggerInfoHandler;
 import org.hswebframework.web.authorization.basic.handler.DefaultAuthorizingHandler;
 import org.hswebframework.web.authorization.basic.handler.UserAllowPermissionHandler;
 import org.hswebframework.web.authorization.basic.handler.access.DefaultDataAccessController;
@@ -16,6 +17,7 @@ import org.hswebframework.web.authorization.token.UserTokenManager;
 import org.hswebframework.web.authorization.twofactor.TwoFactorValidatorManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -27,6 +29,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
 
+import javax.annotation.Nonnull;
 import java.util.List;
 
 /**
@@ -35,7 +38,7 @@ import java.util.List;
  * @author zhouhao
  * @since 3.0
  */
-@Configuration
+@AutoConfiguration
 @EnableConfigurationProperties(EmbedAuthenticationProperties.class)
 public class AuthorizingHandlerAutoConfiguration {
 
@@ -56,61 +59,6 @@ public class AuthorizingHandlerAutoConfiguration {
         return new UserTokenWebFilter();
     }
 
-
-    @Configuration
-    @ConditionalOnClass(name = "org.springframework.web.servlet.config.annotation.WebMvcConfigurer")
-    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-    static class WebMvcAuthorizingConfiguration {
-        @Bean
-        @Order(Ordered.HIGHEST_PRECEDENCE)
-        public WebMvcConfigurer webUserTokenInterceptorConfigurer(UserTokenManager userTokenManager,
-                                                                  AopMethodAuthorizeDefinitionParser parser,
-                                                                  List<UserTokenParser> userTokenParser) {
-
-            return new WebMvcConfigurer() {
-                @Override
-                public void addInterceptors(InterceptorRegistry registry) {
-                    registry.addInterceptor(new WebUserTokenInterceptor(userTokenManager, userTokenParser, parser));
-                }
-            };
-        }
-
-        @Bean
-        public UserOnSignIn userOnSignIn(UserTokenManager userTokenManager) {
-            return new UserOnSignIn(userTokenManager);
-        }
-
-        @Bean
-        public UserOnSignOut userOnSignOut(UserTokenManager userTokenManager) {
-            return new UserOnSignOut(userTokenManager);
-        }
-
-
-        @Bean
-        @ConditionalOnMissingBean(UserTokenParser.class)
-        public UserTokenParser userTokenParser() {
-            return new SessionIdUserTokenParser();
-        }
-
-        @Bean
-        public SessionIdUserTokenGenerator sessionIdUserTokenGenerator() {
-            return new SessionIdUserTokenGenerator();
-        }
-
-        @Bean
-        @ConditionalOnProperty(prefix = "hsweb.authorize.two-factor", name = "enable", havingValue = "true")
-        @Order(100)
-        public WebMvcConfigurer twoFactorHandlerConfigurer(TwoFactorValidatorManager manager) {
-            return new WebMvcConfigurerAdapter() {
-                @Override
-                public void addInterceptors(InterceptorRegistry registry) {
-                    registry.addInterceptor(new TwoFactorHandlerInterceptorAdapter(manager));
-                    super.addInterceptors(registry);
-                }
-            };
-        }
-
-    }
 
     @Bean
     public ReactiveAuthenticationManagerProvider embedAuthenticationManager(EmbedAuthenticationProperties properties) {
@@ -138,6 +86,12 @@ public class AuthorizingHandlerAutoConfiguration {
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
     public ReactiveUserTokenController userTokenController() {
         return new ReactiveUserTokenController();
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
+    public BearerTokenParser bearerTokenParser() {
+        return new BearerTokenParser();
     }
 
     @Configuration
@@ -172,5 +126,12 @@ public class AuthorizingHandlerAutoConfiguration {
             return new BasicAuthorizationTokenParser(authenticationManager, tokenManager);
         }
 
+    }
+
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
+    public AuthorizationLoginLoggerInfoHandler authorizationLoginLoggerInfoHandler() {
+        return new AuthorizationLoginLoggerInfoHandler();
     }
 }

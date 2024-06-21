@@ -22,6 +22,7 @@ package org.hswebframework.web.api.crud.entity;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.validator.constraints.Length;
 import org.hswebframework.ezorm.rdb.mapping.annotation.Comment;
 
 import javax.persistence.Column;
@@ -36,7 +37,7 @@ public abstract class GenericTreeSortSupportEntity<PK> extends GenericEntity<PK>
     /**
      * 父级类别
      */
-    @Column(name = "parent_id", length = 32)
+    @Column(name = "parent_id", length = 64)
     @Comment("父级ID")
     @Schema(description = "父节点ID")
     private PK parentId;
@@ -48,6 +49,7 @@ public abstract class GenericTreeSortSupportEntity<PK> extends GenericEntity<PK>
     @Column(name = "path", length = 128)
     @Comment("树路径")
     @Schema(description = "树结构路径")
+    @Length(max = 128, message = "目录层级太深")
     private String path;
 
     /**

@@ -1,21 +1,32 @@
 package org.hswebframework.web.authorization;
 
 import org.hswebframework.web.authorization.exception.AccessDenyException;
+import org.hswebframework.web.authorization.simple.SimpleAuthentication;
 import org.hswebframework.web.authorization.token.*;
 import org.junit.Assert;
 import org.junit.Test;
+import org.springframework.context.support.StaticApplicationContext;
 import reactor.test.StepVerifier;
 
 public class UserTokenManagerTests {
 
+    private DefaultUserTokenManager createUserTokenManager(){
+        DefaultUserTokenManager userTokenManager = new DefaultUserTokenManager();
+        StaticApplicationContext context=new StaticApplicationContext();
+        context.refresh();
+
+        userTokenManager.setEventPublisher(context);
+        return userTokenManager;
+    }
 
     /**
      * 基本功能测试
-     * @throws InterruptedException  Thread.sleep error
+     *
+     * @throws InterruptedException Thread.sleep error
      */
     @Test
     public void testDefaultSetting() throws InterruptedException {
-        DefaultUserTokenManager userTokenManager = new DefaultUserTokenManager();
+        DefaultUserTokenManager userTokenManager = createUserTokenManager();
         userTokenManager.setAllopatricLoginMode(AllopatricLoginMode.allow); //允许异地登录
 
         UserToken userToken = userTokenManager.signIn("test", "sessionId", "admin", 1000).block();
@@ -26,15 +37,15 @@ public class UserTokenManagerTests {
 
         //2个token
         userTokenManager.totalToken()
-                .as(StepVerifier::create)
-                .expectNext(2)
-                .verifyComplete();
+                        .as(StepVerifier::create)
+                        .expectNext(2)
+                        .verifyComplete();
 
         //1个用户
         userTokenManager.totalUser()
-                .as(StepVerifier::create)
-                .expectNext(1)
-                .verifyComplete();
+                        .as(StepVerifier::create)
+                        .expectNext(1)
+                        .verifyComplete();
 
         //改变token状态
         userTokenManager.changeUserState("admin", TokenState.deny).subscribe();
@@ -48,28 +59,28 @@ public class UserTokenManagerTests {
         Thread.sleep(1200);
 
         userTokenManager.getByToken(userToken.getToken())
-                .map(UserToken::isExpired)
-                .as(StepVerifier::create)
-                .expectNext(true)
-                .verifyComplete();
+                        .map(UserToken::isExpired)
+                        .as(StepVerifier::create)
+                        .expectNext(true)
+                        .verifyComplete();
 
         userTokenManager.checkExpiredToken().subscribe();
 
 
         userTokenManager.getByToken(userToken.getToken())
-                .as(StepVerifier::create)
-                .expectNextCount(0)
-                .verifyComplete();
+                        .as(StepVerifier::create)
+                        .expectNextCount(0)
+                        .verifyComplete();
 
         userTokenManager.totalToken()
-                .as(StepVerifier::create)
-                .expectNext(1)
-                .verifyComplete();
+                        .as(StepVerifier::create)
+                        .expectNext(1)
+                        .verifyComplete();
 
         userTokenManager.totalUser()
-                .as(StepVerifier::create)
-                .expectNext(1)
-                .verifyComplete();
+                        .as(StepVerifier::create)
+                        .expectNext(1)
+                        .verifyComplete();
 
     }
 
@@ -81,6 +92,7 @@ public class UserTokenManagerTests {
     public void testDeny() throws InterruptedException {
         DefaultUserTokenManager userTokenManager = new DefaultUserTokenManager();
         userTokenManager.setAllopatricLoginMode(AllopatricLoginMode.deny);//如果在其他地方登录，本地禁止登录
+        userTokenManager.setEventPublisher(new StaticApplicationContext());
 
         userTokenManager.signIn("test", "sessionId", "admin", 10000).subscribe();
 
@@ -99,8 +111,9 @@ public class UserTokenManagerTests {
      * 测试异地登录模式之踢下线
      */
     @Test
-    public void testOffline()   {
-        DefaultUserTokenManager userTokenManager = new DefaultUserTokenManager();
+    public void testOffline() {
+        DefaultUserTokenManager userTokenManager = createUserTokenManager();
+
         userTokenManager.setAllopatricLoginMode(AllopatricLoginMode.offlineOther); //将其他地方登录的用户踢下线
 
         userTokenManager.signIn("test", "sessionId", "admin", 1000).subscribe();
@@ -113,5 +126,21 @@ public class UserTokenManagerTests {
 
     }
 
+    @Test
+    public void testAuth() {
+        DefaultUserTokenManager userTokenManager = createUserTokenManager();
+        Authentication authentication = new SimpleAuthentication();
+
+        userTokenManager.signIn("test", "test", "test", 1000, authentication)
+                        .as(StepVerifier::create)
+                        .expectNextMatches(token -> token.getAuthentication() == authentication)
+                        .verifyComplete();
+
+        userTokenManager.getByToken("test")
+                        .cast(AuthenticationUserToken.class)
+                        .as(StepVerifier::create)
+                        .expectNextMatches(token -> token.getAuthentication() == authentication)
+                        .verifyComplete();
+    }
 
 }

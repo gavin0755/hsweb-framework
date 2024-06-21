@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hswebframework.web.api.crud.entity.GenericEntity;
+import org.hswebframework.web.crud.annotation.EnableEntityEvent;
 import org.hswebframework.web.crud.generator.Generators;
 
 import javax.persistence.Column;
@@ -16,6 +17,7 @@ import javax.persistence.Table;
 @Table(name = "s_test")
 @AllArgsConstructor(staticName = "of")
 @NoArgsConstructor
+@EnableEntityEvent
 public class TestEntity extends GenericEntity<String> {
 
     @Column(length = 32)
@@ -24,9 +26,8 @@ public class TestEntity extends GenericEntity<String> {
     @Column
     private Integer age;
 
-    @Override
-    @GeneratedValue(generator = Generators.DEFAULT_ID_GENERATOR)
-    public String getId() {
-        return super.getId();
-    }
+    @Column
+    private String testName;
+
+
 }

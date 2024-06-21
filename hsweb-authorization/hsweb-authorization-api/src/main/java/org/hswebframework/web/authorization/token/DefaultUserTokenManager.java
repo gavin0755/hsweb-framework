@@ -20,12 +20,12 @@ package org.hswebframework.web.authorization.token;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.hswebframework.web.authorization.Authentication;
 import org.hswebframework.web.authorization.exception.AccessDenyException;
 import org.hswebframework.web.authorization.token.event.UserTokenChangedEvent;
 import org.hswebframework.web.authorization.token.event.UserTokenCreatedEvent;
 import org.hswebframework.web.authorization.token.event.UserTokenRemovedEvent;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -33,6 +33,7 @@ import reactor.core.publisher.Mono;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 
 /**
  * 默认到用户令牌管理器，使用ConcurrentMap来存储令牌信息
@@ -122,9 +123,9 @@ public class DefaultUserTokenManager implements UserTokenManager {
             return Flux.empty();
         }
         return Flux.fromStream(tokens
-                .stream()
-                .map(tokenStorage::get)
-                .filter(Objects::nonNull));
+                                       .stream()
+                                       .map(tokenStorage::get)
+                                       .filter(Objects::nonNull));
     }
 
     @Override
@@ -142,7 +143,7 @@ public class DefaultUserTokenManager implements UserTokenManager {
             return Mono.just(false);
         }
         return getByToken(token)
-                .map(t -> !t.isExpired())
+                .map(UserToken::isNormal)
                 .defaultIfEmpty(false);
     }
 
@@ -168,42 +169,39 @@ public class DefaultUserTokenManager implements UserTokenManager {
         }
         return Mono.defer(() -> {
             Set<String> tokens = getUserToken(userId);
-            tokens.forEach(token -> signOutByToken(token, false));
-            tokens.clear();
-            userStorage.remove(userId);
-            return Mono.empty();
+            return Flux
+                .fromIterable(tokens)
+                .flatMap(token -> signOutByToken(token, false))
+                .then(Mono.fromRunnable(() -> {
+                    tokens.clear();
+                    userStorage.remove(userId);
+                }));
         });
     }
 
-    private void signOutByToken(String token, boolean removeUserToken) {
-        if (token == null) {
-            return;
-        }
-        LocalUserToken tokenObject = tokenStorage.remove(token);
-        if (tokenObject != null) {
-            String userId = tokenObject.getUserId();
-            if (removeUserToken) {
-                Set<String> tokens = getUserToken(userId);
-                if (!tokens.isEmpty()) {
-                    tokens.remove(token);
+    private Mono<Void> signOutByToken(String token, boolean removeUserToken) {
+        if (token != null) {
+            LocalUserToken tokenObject = tokenStorage.remove(token);
+            if (tokenObject != null) {
+                String userId = tokenObject.getUserId();
+                if (removeUserToken) {
+                    Set<String> tokens = getUserToken(userId);
+                    if (!tokens.isEmpty()) {
+                        tokens.remove(token);
+                    }
+                    if (tokens.isEmpty()) {
+                        userStorage.remove(tokenObject.getUserId());
+                    }
                 }
-                if (tokens.isEmpty()) {
-                    userStorage.remove(tokenObject.getUserId());
-                }
+                return new UserTokenRemovedEvent(tokenObject).publish(eventPublisher);
             }
-            publishEvent(new UserTokenRemovedEvent(tokenObject));
         }
+        return Mono.empty();
     }
 
     @Override
     public Mono<Void> signOutByToken(String token) {
-        return Mono.fromRunnable(() -> signOutByToken(token, true));
-    }
-
-    protected void publishEvent(ApplicationEvent event) {
-        if (null != eventPublisher) {
-            eventPublisher.publishEvent(event);
-        }
+        return signOutByToken(token, true);
     }
 
     public Mono<Void> changeTokenState(UserToken userToken, TokenState state) {
@@ -214,7 +212,7 @@ public class DefaultUserTokenManager implements UserTokenManager {
             token.setState(state);
             syncToken(userToken);
 
-            publishEvent(new UserTokenChangedEvent(copy, userToken));
+            return new UserTokenChangedEvent(copy, userToken).publish(eventPublisher);
         }
         return Mono.empty();
     }
@@ -228,24 +226,33 @@ public class DefaultUserTokenManager implements UserTokenManager {
     @Override
     public Mono<Void> changeUserState(String user, TokenState state) {
         return Mono.from(getByUserId(user)
-                .flatMap(token -> changeTokenState(token.getToken(), state)));
+                                 .flatMap(token -> changeTokenState(token.getToken(), state)));
     }
 
     @Override
     public Mono<UserToken> signIn(String token, String type, String userId, long maxInactiveInterval) {
 
+        return doSignIn(token, type, userId, maxInactiveInterval, LocalUserToken::new)
+                .cast(UserToken.class);
+
+    }
+
+    private <T extends LocalUserToken> Mono<T> doSignIn(String token, String type, String userId, long maxInactiveInterval, Supplier<T> tokenSupplier) {
+
         return Mono.defer(() -> {
-            LocalUserToken detail = new LocalUserToken(userId, token);
+            T detail = tokenSupplier.get();
+            detail.setUserId(userId);
+            detail.setToken(token);
             detail.setType(type);
             detail.setMaxInactiveInterval(maxInactiveInterval);
             detail.setState(TokenState.normal);
-            Runnable doSign = () -> {
+            Mono<Void> doSign = Mono.defer(() -> {
                 tokenStorage.put(token, detail);
 
                 getUserToken(userId).add(token);
 
-                publishEvent(new UserTokenCreatedEvent(detail));
-            };
+                return new UserTokenCreatedEvent(detail).publish(eventPublisher);
+            });
             AllopatricLoginMode mode = allopatricLoginModes.getOrDefault(type, allopatricLoginMode);
             if (mode == AllopatricLoginMode.deny) {
                 return getByUserId(userId)
@@ -253,23 +260,29 @@ public class DefaultUserTokenManager implements UserTokenManager {
                         .flatMap(this::checkTimeout)
                         .filterWhen(t -> {
                             if (t.isNormal()) {
-                                return Mono.error(new AccessDenyException("该用户已在其他地方登陆"));
+                                return Mono.error(new AccessDenyException("error.logged_in_elsewhere"));
                             }
                             return Mono.empty();
                         })
-                        .then(Mono.just(detail))
-                        .doOnNext(__ -> doSign.run());
+                        .then(doSign)
+                        .thenReturn(detail);
             } else if (mode == AllopatricLoginMode.offlineOther) {
                 return getByUserId(userId)
                         .filter(userToken -> type.equals(userToken.getType()))
                         .flatMap(userToken -> changeTokenState(userToken, TokenState.offline))
-                        .then(Mono.just(detail))
-                        .doOnNext(__ -> doSign.run());
+                        .then(doSign)
+                        .thenReturn(detail);
             }
-            doSign.run();
-            return Mono.just(detail);
+            return doSign.thenReturn(detail);
         });
 
+    }
+
+    @Override
+    public Mono<AuthenticationUserToken> signIn(String token, String type, String userId, long maxInactiveInterval, Authentication authentication) {
+        return this
+                .doSignIn(token, type, userId, maxInactiveInterval, () -> new LocalAuthenticationUserToken(authentication))
+                .cast(AuthenticationUserToken.class);
     }
 
     @Override
